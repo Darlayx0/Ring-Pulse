@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Ring Pulse — precision timing game. Hit the right ring segments with perfect timing.">
+    <title>Ring Pulse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="game.js"></script>
+  </head>
+  <body>
+    <main class="app-shell" aria-label="Game Ring Pulse">
+      <header class="top-bar">
+        <div class="identity">
+          <div class="logo-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 3a9 9 0 1 0 9 9h-2.2A6.8 6.8 0 1 1 12 5.2V3zm1 1v8.4l5.9 3.4 1-1.8-4.9-2.8V4h-2z"></path>
+            </svg>
+          </div>
+          <div class="identity-copy">
+            <p class="eyebrow">Ring Pulse</p>
+            <h1 id="gameTitle">Ring Pulse</h1>
+          </div>
+        </div>
+
+        <div class="mode-panel mode-hud" aria-label="Pilihan mode permainan">
+          <span class="mode-caption">Mode</span>
+          <div class="mode-toggle" role="group" aria-label="Mode permainan">
+            <button class="mode-option is-active" type="button" data-run-mode="standard">Standard</button>
+            <button class="mode-option" type="button" data-run-mode="endless">Endless</button>
+          </div>
+        </div>
+
+        <div class="difficulty-panel difficulty-hud" id="difficultyPanel" aria-label="Pilihan kesulitan">
+          <span class="difficulty-caption">Kesulitan</span>
+          <div class="difficulty-toggle" role="group" aria-label="Tingkat kesulitan standar">
+            <button class="difficulty-option" type="button" data-difficulty="easy">Mudah</button>
+            <button class="difficulty-option is-active" type="button" data-difficulty="normal">Normal</button>
+            <button class="difficulty-option" type="button" data-difficulty="hard">Hard</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="play-layout">
+        <aside class="performance-panel panel-card" aria-label="Performa permainan">
+          <div class="panel-heading">
+            <span>Performa</span>
+            <strong id="sessionModeValue">Normal</strong>
+          </div>
+
+          <div class="score-card">
+            <span>Skor</span>
+            <strong id="scoreValue">0</strong>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat-tile">
+              <span class="stat-label">Level</span>
+              <strong id="levelValue">1/25</strong>
+            </div>
+
+            <div class="stat-tile">
+              <span class="stat-label">Nyawa</span>
+              <strong id="lifeValue" class="life-status" aria-label="5 nyawa"></strong>
+            </div>
+
+            <div class="stat-tile">
+              <span class="stat-label">Kombo</span>
+              <strong id="comboValue">0</strong>
+            </div>
+
+            <div class="stat-tile">
+              <span class="stat-label">High Score</span>
+              <strong id="highScoreValue">0</strong>
+            </div>
+          </div>
+
+          <div class="quality-panel" id="qualityPanel">
+            <div class="quality-row">
+              <div>
+                <span class="stat-label" id="perfectMetricLabel">% Perfect</span>
+                <strong id="accuracyValue">0%</strong>
+              </div>
+              <em id="highPerfectValue" hidden>High 0%</em>
+            </div>
+            <div class="perfect-meter" id="perfectMeter" aria-label="Progress persentase perfect">
+              <span id="perfectFill"></span>
+              <i id="highPerfectMarker" hidden></i>
+            </div>
+          </div>
+        </aside>
+
+        <section class="arena-panel" aria-label="Arena permainan">
+          <div class="stage">
+            <canvas id="gameCanvas" width="900" height="900" aria-label="Arena lingkaran, klik atau tap untuk hit" role="button" tabindex="0"></canvas>
+
+            <div class="notice" id="noticePanel" role="status" aria-live="polite">
+              <p id="noticeKicker">Normal - 25 Level</p>
+              <h2 id="noticeTitle">Siap?</h2>
+              <button class="start-button" id="startButton" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 5v14l11-7L8 5z"></path>
+                </svg>
+                <span>Mulai</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="side-panel" aria-label="Kontrol permainan">
+          <div class="progress-panel panel-card">
+            <div class="panel-heading" id="progressRunHeader">
+              <span>Progres Run</span>
+              <strong id="progressValue">0%</strong>
+            </div>
+            <div class="progress-meter" id="progressRunMeter" aria-label="Progress run">
+              <span id="progressFill"></span>
+            </div>
+
+            <div class="record-row">
+              <span>High Level</span>
+              <strong id="highLevelValue">0/0</strong>
+            </div>
+            <div class="progress-meter is-record" id="highLevelMeter" aria-label="Progress high level">
+              <span id="highLevelFill"></span>
+            </div>
+            <div class="level-grid" id="levelGrid" aria-label="Progress level"></div>
+          </div>
+
+          <div class="metric-panel panel-card">
+            <div class="metric-row" id="ringMetricRow">
+              <span>Ring</span>
+              <strong id="ringValue">0/0</strong>
+            </div>
+            <div class="metric-row">
+              <span>Area Target</span>
+              <strong id="clearedValue">0/0</strong>
+            </div>
+            <div class="segment-strip" id="segmentStrip" aria-label="Status area target"></div>
+          </div>
+
+          <div class="controls panel-card" aria-label="Kontrol sekunder">
+            <div class="icon-actions">
+              <button class="icon-button" id="pauseButton" type="button" aria-label="Jeda" title="Jeda">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 5h3v14H8zM13 5h3v14h-3z"></path>
+                </svg>
+                <span>Jeda</span>
+              </button>
+              <button class="icon-button" id="restartButton" type="button" aria-label="Ulang" title="Ulang">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5a7 7 0 1 1-6.3 4H3l4-4 4 4H8.1A4.9 4.9 0 1 0 12 7.1V5z"></path>
+                </svg>
+                <span>Ulang</span>
+              </button>
+            </div>
+            <button class="reset-launcher" id="openResetButton" type="button" aria-haspopup="dialog" aria-controls="resetDialog">
+              Reset progress
+            </button>
+          </div>
+        </aside>
+      </section>
+
+      <dialog class="reset-window" id="resetDialog" aria-labelledby="resetWindowTitle">
+        <div class="reset-window-shell">
+          <div class="window-titlebar">
+            <div>
+              <span>Mode Aktif</span>
+              <h2 id="resetWindowTitle">Reset Progres</h2>
+            </div>
+            <strong id="resetModeValue">Normal</strong>
+            <button class="window-close" id="closeResetButton" type="button" aria-label="Tutup">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="reset-actions">
+            <button class="reset-button" type="button" data-reset-scope="high-level">High Level</button>
+            <button class="reset-button" type="button" data-reset-scope="high-score">High Score</button>
+            <button class="reset-button" type="button" data-reset-scope="high-perfect" id="resetHighPerfectButton">High % Perfect</button>
+            <button class="reset-button" type="button" data-reset-scope="mode">Reset Mode Ini</button>
+            <button class="reset-button is-danger" type="button" data-reset-scope="game">Reset Seluruh Game</button>
+          </div>
+        </div>
+      </dialog>
+    </main>
+  </body>
+</html>
