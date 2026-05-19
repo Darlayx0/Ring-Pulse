@@ -9,6 +9,7 @@ const ui = {
   level: document.querySelector("#levelValue"),
   score: document.querySelector("#scoreValue"),
   highScore: document.querySelector("#highScoreValue"),
+  lifeLabel: document.querySelector("#lifeLabel"),
   life: document.querySelector("#lifeValue"),
   combo: document.querySelector("#comboValue"),
   ring: document.querySelector("#ringValue"),
@@ -183,10 +184,45 @@ const endlessDefinition = {
   extraLifeScoreStep: 50000,
 };
 
+const timeAttackDefinition = {
+  id: "time-attack",
+  label: "Time Attack",
+  lives: 0,
+  initialTime: 60,
+  timeRewards: {
+    perfect: 5,
+    good: 3,
+    hit: 1,
+    miss: -10,
+  },
+  segmentCounts: Array.from({ length: 25 }, (_, index) => index + 4),
+  tuning: {
+    speedBase: 0.96,
+    speedStep: 0,
+    speedCurve: 0,
+    varianceBase: 0.2,
+    varianceCurve: 1.34,
+    minSpanStart: 14,
+    minSpanDrop: 0.38,
+    minSpanFloor: 2.1,
+    longSlotsBase: 1,
+    longSlotsMax: 5,
+    shortSlotsBase: 1,
+    shortSlotsMax: 9,
+    shortSlotRatio: 0.4,
+    longMultiplierBase: 2.3,
+    longMultiplierCurve: 5.7,
+    shortMultiplierStart: 0.28,
+    shortMultiplierCurve: 0.17,
+  },
+};
+
 Object.values(modeDefinitions).forEach((mode) => {
   mode.levels = createLevels(mode);
   mode.signature = createModeSignature(mode);
 });
+timeAttackDefinition.levels = createLevels(timeAttackDefinition);
+timeAttackDefinition.signature = createModeSignature(timeAttackDefinition);
 endlessDefinition.signature = createEndlessSignature(endlessDefinition);
 
 const state = {
@@ -200,6 +236,7 @@ const state = {
   completedLevels: 0,
   score: 0,
   lives: 5,
+  timeRemaining: 60,
   extraLifeMilestones: 0,
   combo: 0,
   attempts: 0,
@@ -263,6 +300,18 @@ function formatProgressPercent(value) {
   }
 
   return `${Math.round(value)}%`;
+}
+
+function formatDuration(value) {
+  const totalSeconds = Math.max(0, Math.ceil(value));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes > 0) {
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${seconds}s`;
 }
 
 function seededUnit(seed) {
@@ -338,7 +387,9 @@ function createModeSignature(mode) {
   return hashText(JSON.stringify({
     id: mode.id,
     lives: mode.lives,
+    initialTime: mode.initialTime,
     extraLifeScoreStep: mode.extraLifeScoreStep,
+    timeRewards: mode.timeRewards,
     scoring: Object.fromEntries(
       Object.entries(feedbackTiers).map(([key, tier]) => [key, tier.score])
     ),
@@ -423,21 +474,37 @@ function currentMode() {
   return modeDefinitions[state.difficulty];
 }
 
+function isTimeAttackRun() {
+  return state.runMode === "time-attack";
+}
+
 function isEndlessRun() {
   return state.runMode === "endless";
 }
 
 function currentRunDefinition() {
-  return isEndlessRun() ? endlessDefinition : currentMode();
+  if (isEndlessRun()) {
+    return endlessDefinition;
+  }
+
+  if (isTimeAttackRun()) {
+    return timeAttackDefinition;
+  }
+
+  return currentMode();
 }
 
 function currentRunLabel() {
-  return isEndlessRun() ? endlessDefinition.label : currentMode().label;
+  return currentRunDefinition().label;
 }
 
 function startNoticeKicker() {
   if (isEndlessRun()) {
     return endlessDefinition.label;
+  }
+
+  if (isTimeAttackRun()) {
+    return `${timeAttackDefinition.label} - ${timeAttackDefinition.levels.length} Level`;
   }
 
   return `${currentMode().label} - ${currentMode().levels.length} Level`;
@@ -461,12 +528,36 @@ function addScore(points) {
   awardScoreLives();
 }
 
+function adjustTime(seconds) {
+  if (!isTimeAttackRun()) {
+    return;
+  }
+
+  state.timeRemaining = Math.max(0, state.timeRemaining + seconds);
+}
+
+function timeRewardForFeedback(feedback) {
+  if (!isTimeAttackRun()) {
+    return 0;
+  }
+
+  if (feedback === feedbackTiers.perfect) {
+    return timeAttackDefinition.timeRewards.perfect;
+  }
+
+  if (feedback === feedbackTiers.good) {
+    return timeAttackDefinition.timeRewards.good;
+  }
+
+  return timeAttackDefinition.timeRewards.hit;
+}
+
 function currentLevel() {
   if (isEndlessRun()) {
     return createEndlessLevel(state.levelIndex);
   }
 
-  const levels = currentMode().levels;
+  const levels = currentRunDefinition().levels;
   return levels[state.levelIndex] || levels[levels.length - 1];
 }
 
@@ -495,11 +586,11 @@ function hitRingsForMode(mode = currentMode()) {
 }
 
 function totalRingsForRun() {
-  return isEndlessRun() ? currentLevel().segments : totalRingsForMode(currentMode());
+  return isEndlessRun() ? currentLevel().segments : totalRingsForMode(currentRunDefinition());
 }
 
 function hitRingsForRun() {
-  return isEndlessRun() ? clearedSegments() : hitRingsForMode(currentMode());
+  return isEndlessRun() ? clearedSegments() : hitRingsForMode(currentRunDefinition());
 }
 
 function currentPerfectPercent() {
@@ -508,7 +599,7 @@ function currentPerfectPercent() {
 
 function setupLevelGrid() {
   ui.grid.innerHTML = "";
-  const dotCount = isEndlessRun() ? 12 : currentMode().levels.length;
+  const dotCount = isEndlessRun() ? 12 : currentRunDefinition().levels.length;
   Array.from({ length: dotCount }, (_, index) => index).forEach((index) => {
     const dot = document.createElement("div");
     dot.className = "level-dot";
@@ -620,6 +711,7 @@ function startGame() {
   state.completedLevels = 0;
   state.score = 0;
   state.lives = currentRunDefinition().lives;
+  state.timeRemaining = currentRunDefinition().initialTime ?? 0;
   state.extraLifeMilestones = 0;
   state.combo = 0;
   state.attempts = 0;
@@ -643,10 +735,12 @@ function advanceLevel() {
 
 function completeLevel() {
   const level = currentLevel();
+  const runDefinition = currentRunDefinition();
+  const resourceBonus = isTimeAttackRun() ? Math.ceil(state.timeRemaining) : state.lives;
   state.completedLevels = Math.max(state.completedLevels, state.levelIndex + 1);
-  addScore(240 + level.segments * 22 + state.levelIndex * 25 + state.lives * 18);
+  addScore(240 + level.segments * 22 + state.levelIndex * 25 + resourceBonus * 18);
 
-  const clearedAll = !isEndlessRun() && state.levelIndex === currentMode().levels.length - 1;
+  const clearedAll = !isEndlessRun() && state.levelIndex === runDefinition.levels.length - 1;
 
   if (clearedAll) {
     completeGame();
@@ -665,9 +759,11 @@ function completeLevel() {
 }
 
 function completeGame() {
+  const runDefinition = currentRunDefinition();
+  const resourceBonus = isTimeAttackRun() ? Math.ceil(state.timeRemaining) : state.lives;
   state.mode = "complete";
-  state.completedLevels = currentMode().levels.length;
-  addScore(state.lives * 280 + state.combo * 36);
+  state.completedLevels = runDefinition.levels.length;
+  addScore(resourceBonus * 280 + state.combo * 36);
   updateRecords();
   updateUI();
   showNotice("Ring Pulse", "Tuntas", "Main Lagi");
@@ -687,6 +783,7 @@ function gameOver() {
 function updateRecords() {
   let changed = false;
   const runDefinition = currentRunDefinition();
+  const runLevels = runDefinition.levels ?? [];
   if (state.score > state.best) {
     state.best = state.score;
     changed = true;
@@ -698,7 +795,7 @@ function updateRecords() {
     changed = true;
   }
 
-  if (!isEndlessRun() && state.completedLevels >= currentMode().levels.length) {
+  if (!isEndlessRun() && state.completedLevels >= runLevels.length) {
     const perfectPercent = currentPerfectPercent();
     if (perfectPercent > state.highPerfectPercent) {
       state.highPerfectPercent = perfectPercent;
@@ -747,6 +844,7 @@ function handleHit() {
 
   if (segment && !segment.cleared) {
     const feedback = feedbackForSegment(segment, state.angle);
+    const timeReward = timeRewardForFeedback(feedback);
     const sizeBonus = Math.round(Math.min(80, 16 / Math.max(0.12, segment.span)));
 
     segment.cleared = true;
@@ -756,12 +854,13 @@ function handleHit() {
       state.perfectHits += 1;
     }
     state.combo = feedback === feedbackTiers.hit ? 0 : state.combo + 1;
+    adjustTime(timeReward);
     addScore(feedback.score + sizeBonus + state.combo * 13 + state.levelIndex * 9);
     state.flash = {
       kind: feedback === feedbackTiers.perfect ? "perfect" : feedback === feedbackTiers.good ? "good" : "hit",
       life: 0.42,
       maxLife: 0.42,
-      label: feedback.label,
+      label: isTimeAttackRun() ? `${feedback.label} +${timeReward}s` : feedback.label,
       color: feedback.color,
       segmentIndex: segment.index,
     };
@@ -776,19 +875,23 @@ function handleHit() {
       updateUI();
     }
   } else {
-    state.lives -= 1;
+    if (isTimeAttackRun()) {
+      adjustTime(timeAttackDefinition.timeRewards.miss);
+    } else {
+      state.lives -= 1;
+    }
     state.combo = 0;
     state.flash = {
       kind: "miss",
       life: 0.48,
       maxLife: 0.48,
-      label: "Kosong",
+      label: isTimeAttackRun() ? "Kosong -10s" : "Kosong",
     };
     state.shake = 0.28;
     playTone("miss");
     navigator.vibrate?.(70);
 
-    if (state.lives <= 0) {
+    if (isTimeAttackRun() ? state.timeRemaining <= 0 : state.lives <= 0) {
       gameOver();
     } else {
       updateUI();
@@ -832,6 +935,7 @@ function resetCurrentRun() {
   state.completedLevels = 0;
   state.score = 0;
   state.lives = currentRunDefinition().lives;
+  state.timeRemaining = currentRunDefinition().initialTime ?? 0;
   state.extraLifeMilestones = 0;
   state.combo = 0;
   state.attempts = 0;
@@ -858,7 +962,7 @@ function setDifficulty(difficulty) {
 }
 
 function setRunMode(runMode) {
-  if (!["standard", "endless"].includes(runMode) || state.runMode === runMode) {
+  if (!["standard", "time-attack", "endless"].includes(runMode) || state.runMode === runMode) {
     return;
   }
 
@@ -896,6 +1000,12 @@ function resetAllGameProgress() {
     });
   });
   saveRecordValuesForMode(endlessDefinition, {
+    best: 0,
+    highLevel: 0,
+    highPerfectPercent: 0,
+    highPerfectHits: 0,
+  });
+  saveRecordValuesForMode(timeAttackDefinition, {
     best: 0,
     highLevel: 0,
     highPerfectPercent: 0,
@@ -995,8 +1105,20 @@ function syncCurrentSegmentIndicator() {
 }
 
 function renderLives() {
+  if (isTimeAttackRun()) {
+    const timeText = formatDuration(state.timeRemaining);
+    ui.lifeLabel.textContent = "Waktu";
+    ui.life.className = "time-status";
+    ui.life.textContent = timeText;
+    ui.life.setAttribute("aria-label", `${timeText} tersisa`);
+    ui.life.classList.toggle("is-low", state.timeRemaining <= 10);
+    return;
+  }
+
   const startingLives = currentRunDefinition().lives;
+  ui.lifeLabel.textContent = "Nyawa";
   ui.life.innerHTML = "";
+  ui.life.className = "life-status";
   ui.life.setAttribute("aria-label", `${state.lives} nyawa`);
   ui.life.classList.toggle("is-low", state.lives <= Math.max(1, Math.ceil(startingLives * 0.3)));
 
@@ -1020,19 +1142,21 @@ function setMeterValue(fillElement, value) {
 
 function updateUI() {
   const level = currentLevel();
-  const mode = currentMode();
+  const runDefinition = currentRunDefinition();
   const endless = isEndlessRun();
-  const levelNumber = endless ? state.levelIndex + 1 : Math.min(state.levelIndex + 1, mode.levels.length);
+  const timed = isTimeAttackRun();
+  const runLevels = runDefinition.levels ?? [];
+  const levelNumber = endless ? state.levelIndex + 1 : Math.min(state.levelIndex + 1, runLevels.length);
   const cleared = clearedSegments();
   const totalModeRings = totalRingsForRun();
   const hitModeRings = hitRingsForRun();
   const perfectPercent = currentPerfectPercent();
   const progress = totalModeRings === 0 ? 0 : (hitModeRings / totalModeRings) * 100;
-  const highLevelProgress = endless ? (state.highLevel > 0 ? 100 : 0) : Math.round((state.highLevel / mode.levels.length) * 100);
-  const hasCompletedMode = !endless && state.highLevel >= mode.levels.length;
+  const highLevelProgress = endless ? (state.highLevel > 0 ? 100 : 0) : Math.round((state.highLevel / runLevels.length) * 100);
+  const hasCompletedMode = !endless && state.highLevel >= runLevels.length;
 
   ui.title.textContent = "Ring Pulse";
-  ui.level.textContent = endless ? `Level ${levelNumber}` : `${levelNumber}/${mode.levels.length}`;
+  ui.level.textContent = endless ? `Level ${levelNumber}` : `${levelNumber}/${runLevels.length}`;
   ui.score.textContent = formatScore(state.score);
   ui.highScore.textContent = formatScore(state.best);
   renderLives();
@@ -1052,12 +1176,12 @@ function updateUI() {
   }
   ui.progress.textContent = formatProgressPercent(progress);
   setMeterValue(ui.progressFill, progress);
-  ui.highLevel.textContent = endless ? String(state.highLevel) : `${state.highLevel}/${mode.levels.length}`;
+  ui.highLevel.textContent = endless ? String(state.highLevel) : `${state.highLevel}/${runLevels.length}`;
   setMeterValue(ui.highLevelFill, highLevelProgress);
   ui.cleared.textContent = `${cleared}/${level.segments}`;
   ui.sessionMode.textContent = currentRunLabel();
   ui.resetMode.textContent = currentRunLabel();
-  ui.difficultyPanel.hidden = endless;
+  ui.difficultyPanel.hidden = endless || timed;
   ui.progressRunHeader.hidden = endless;
   ui.progressRunMeter.hidden = endless;
   ui.highLevelMeter.hidden = endless;
@@ -1085,7 +1209,7 @@ function updateUI() {
     const isActive = button.dataset.difficulty === state.difficulty;
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
-    button.disabled = endless;
+    button.disabled = endless || timed;
   });
 
   ui.pauseButton.disabled = !(state.mode === "playing" || state.mode === "paused");
@@ -1421,6 +1545,13 @@ function tick(timestamp) {
 
   if (state.mode === "playing") {
     state.angle = normalizeAngle(state.angle + currentLevel().speed * delta);
+    if (isTimeAttackRun()) {
+      state.timeRemaining = Math.max(0, state.timeRemaining - delta);
+      renderLives();
+      if (state.timeRemaining <= 0) {
+        gameOver();
+      }
+    }
   } else if (state.mode === "idle") {
     state.angle = normalizeAngle(state.angle + 0.34 * delta);
   }
