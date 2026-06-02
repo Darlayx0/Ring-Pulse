@@ -39,6 +39,7 @@ const ui = {
   notice: document.querySelector("#noticePanel"),
   noticeKicker: document.querySelector("#noticeKicker"),
   noticeTitle: document.querySelector("#noticeTitle"),
+  noticeDetail: document.querySelector("#noticeDetail"),
   startButton: document.querySelector("#startButton"),
   pauseButton: document.querySelector("#pauseButton"),
   restartButton: document.querySelector("#restartButton"),
@@ -82,6 +83,40 @@ const feedbackTiers = {
     color: "#ffcf4b",
     tone: "perfect",
   },
+};
+
+const standardFinishScoring = {
+  basePoints: 1000,
+  perfectTiers: [
+    { min: 100, points: 3200, label: "100% Perfect" },
+    { min: 95, points: 2600, label: "95%+ Perfect" },
+    { min: 90, points: 2100, label: "90%+ Perfect" },
+    { min: 85, points: 1700, label: "85%+ Perfect" },
+    { min: 80, points: 1300, label: "80%+ Perfect" },
+    { min: 70, points: 900, label: "70%+ Perfect" },
+    { min: 60, points: 550, label: "60%+ Perfect" },
+    { min: 0, points: 250, label: "<60% Perfect" },
+  ],
+  comboTiers: [
+    { min: 90, points: 2200, label: "90%+ Max Combo" },
+    { min: 75, points: 1700, label: "75%+ Max Combo" },
+    { min: 60, points: 1250, label: "60%+ Max Combo" },
+    { min: 45, points: 850, label: "45%+ Max Combo" },
+    { min: 30, points: 500, label: "30%+ Max Combo" },
+    { min: 0, points: 250, label: "<30% Max Combo" },
+  ],
+  noMissPoints: 1400,
+  allRotationsHitPoints: 1000,
+  ranks: [
+    { rank: "S+", min: 8600 },
+    { rank: "S", min: 7800 },
+    { rank: "A+", min: 7000 },
+    { rank: "A", min: 5900 },
+    { rank: "B+", min: 4800 },
+    { rank: "B", min: 3600 },
+    { rank: "C", min: 2400 },
+    { rank: "D", min: 0 },
+  ],
 };
 
 const modeDefinitions = {
@@ -181,6 +216,39 @@ const modeDefinitions = {
       shortMultiplierCurve: 0.125,
     },
   },
+  extreme: {
+    id: "extreme",
+    label: "Ekstrim",
+    lives: 3,
+    extraLifeScoreStep: 100000,
+    segmentCounts: [
+      8, 9, 10, 11, 12,
+      13, 14, 15, 16, 17,
+      18, 19, 20, 21, 22,
+      23, 24, 25, 26, 27,
+      28, 30, 31, 32, 34,
+      35, 37, 38, 40, 42,
+    ],
+    tuning: {
+      speedBase: 1.18,
+      speedStep: 0.078,
+      speedCurve: 1.35,
+      varianceBase: 0.54,
+      varianceCurve: 1.75,
+      minSpanStart: 8.4,
+      minSpanDrop: 0.22,
+      minSpanFloor: 1.1,
+      longSlotsBase: 2,
+      longSlotsMax: 8,
+      shortSlotsBase: 3,
+      shortSlotsMax: 14,
+      shortSlotRatio: 0.5,
+      longMultiplierBase: 3.5,
+      longMultiplierCurve: 8.8,
+      shortMultiplierStart: 0.14,
+      shortMultiplierCurve: 0.1,
+    },
+  },
 };
 
 const endlessDefinition = {
@@ -246,9 +314,15 @@ const state = {
   timeRemaining: 60,
   extraLifeMilestones: 0,
   combo: 0,
+  maxCombo: 0,
   attempts: 0,
+  misses: 0,
   hits: 0,
   perfectHits: 0,
+  completedRotations: 0,
+  emptyRotations: 0,
+  currentRotationHit: false,
+  finishResult: null,
   best: 0,
   highLevel: 0,
   highPerfectPercent: 0,
@@ -399,6 +473,7 @@ function createModeSignature(mode) {
     extraLifeScoreStep: mode.extraLifeScoreStep,
     timeRewards: mode.timeRewards,
     segmentBalance: SEGMENT_BALANCE,
+    standardFinishScoring,
     scoring: Object.fromEntries(
       Object.entries(feedbackTiers).map(([key, tier]) => [key, tier.score])
     ),
@@ -490,6 +565,10 @@ function isTimeAttackRun() {
 
 function isEndlessRun() {
   return state.runMode === "endless";
+}
+
+function isStandardRun() {
+  return state.runMode === "standard";
 }
 
 function currentRunDefinition() {
@@ -608,6 +687,58 @@ function currentPerfectPercent() {
   return state.hits === 0 ? 0 : Math.round((state.perfectHits / state.hits) * 100);
 }
 
+function findScoringTier(tiers, value) {
+  return tiers.find((tier) => value >= tier.min) || tiers[tiers.length - 1];
+}
+
+function calculateStandardFinishResult() {
+  const totalSegments = totalRingsForRun();
+  const perfectPercent = currentPerfectPercent();
+  const comboPercent = totalSegments === 0 ? 0 : Math.round((state.maxCombo / totalSegments) * 100);
+  const perfectTier = findScoringTier(standardFinishScoring.perfectTiers, perfectPercent);
+  const comboTier = findScoringTier(standardFinishScoring.comboTiers, comboPercent);
+  const noMiss = state.misses === 0;
+  const allRotationsHit = state.emptyRotations === 0;
+  const points = standardFinishScoring.basePoints
+    + perfectTier.points
+    + comboTier.points
+    + (noMiss ? standardFinishScoring.noMissPoints : 0)
+    + (allRotationsHit ? standardFinishScoring.allRotationsHitPoints : 0);
+  const rankTier = findScoringTier(standardFinishScoring.ranks, points);
+
+  return {
+    rank: rankTier.rank,
+    points,
+    perfectPercent,
+    maxCombo: state.maxCombo,
+    comboPercent,
+    noMiss,
+    allRotationsHit,
+    completedRotations: state.completedRotations,
+    emptyRotations: state.emptyRotations,
+    perfectTier,
+    comboTier,
+  };
+}
+
+function formatFinishDetail(result) {
+  const cleanText = result.noMiss ? "Tanpa miss" : `${state.misses} miss`;
+  const tempoText = result.allRotationsHit ? "Tempo penuh" : `${result.emptyRotations} putaran kosong`;
+  return `Rank ${result.rank} - Bonus +${formatScore(result.points)} - Perfect ${result.perfectPercent}% - Kombo ${result.comboPercent}% - ${cleanText} - ${tempoText}`;
+}
+
+function trackCompletedRotation(previousAngle, nextAngle) {
+  if (nextAngle >= previousAngle) {
+    return;
+  }
+
+  state.completedRotations += 1;
+  if (!state.currentRotationHit) {
+    state.emptyRotations += 1;
+  }
+  state.currentRotationHit = false;
+}
+
 function setupLevelGrid() {
   ui.grid.innerHTML = "";
   const dotCount = isEndlessRun() ? 12 : currentRunDefinition().levels.length;
@@ -636,9 +767,11 @@ function syncCanvasSize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function showNotice(kicker, title, actionText) {
+function showNotice(kicker, title, actionText, detail = "") {
   ui.noticeKicker.textContent = kicker;
   ui.noticeTitle.textContent = title;
+  ui.noticeDetail.textContent = detail;
+  ui.noticeDetail.hidden = detail.length === 0;
   const buttonLabel = ui.startButton.querySelector("span");
   if (buttonLabel) {
     buttonLabel.textContent = actionText;
@@ -718,6 +851,7 @@ function loadLevel(index) {
   state.levelIndex = index;
   state.segments = generateSegments(currentLevel());
   state.currentHits = 0;
+  state.currentRotationHit = false;
   state.angle = normalizeAngle(degreesToRadians(11 + index * 13));
   state.flash = null;
   state.shake = 0;
@@ -736,9 +870,15 @@ function startGame() {
   state.timeRemaining = currentRunDefinition().initialTime ?? 0;
   state.extraLifeMilestones = 0;
   state.combo = 0;
+  state.maxCombo = 0;
   state.attempts = 0;
+  state.misses = 0;
   state.hits = 0;
   state.perfectHits = 0;
+  state.completedRotations = 0;
+  state.emptyRotations = 0;
+  state.currentRotationHit = false;
+  state.finishResult = null;
   loadLevel(0);
   hideNotice();
   playTone("start");
@@ -783,12 +923,22 @@ function completeLevel() {
 function completeGame() {
   const runDefinition = currentRunDefinition();
   const resourceBonus = isTimeAttackRun() ? Math.ceil(state.timeRemaining) : state.lives;
+  const finishResult = isStandardRun() ? calculateStandardFinishResult() : null;
   state.mode = "complete";
   state.completedLevels = runDefinition.levels.length;
   addScore(resourceBonus * 280 + state.combo * 36);
+  if (finishResult) {
+    addScore(finishResult.points);
+  }
+  state.finishResult = finishResult;
   updateRecords();
   updateUI();
-  showNotice("Ring Pulse", "Tuntas", "Main Lagi");
+  showNotice(
+    "Ring Pulse",
+    finishResult ? `Tuntas ${finishResult.rank}` : "Tuntas",
+    "Main Lagi",
+    finishResult ? formatFinishDetail(finishResult) : ""
+  );
   playTone("complete");
 }
 
@@ -876,6 +1026,8 @@ function handleHit() {
       state.perfectHits += 1;
     }
     state.combo = feedback === feedbackTiers.hit ? 0 : state.combo + 1;
+    state.maxCombo = Math.max(state.maxCombo, state.combo);
+    state.currentRotationHit = true;
     adjustTime(timeReward);
     addScore(feedback.score + sizeBonus + state.combo * 13 + state.levelIndex * 9);
     state.flash = {
@@ -902,6 +1054,7 @@ function handleHit() {
     } else {
       state.lives -= 1;
     }
+    state.misses += 1;
     state.combo = 0;
     state.flash = {
       kind: "miss",
@@ -960,9 +1113,15 @@ function resetCurrentRun() {
   state.timeRemaining = currentRunDefinition().initialTime ?? 0;
   state.extraLifeMilestones = 0;
   state.combo = 0;
+  state.maxCombo = 0;
   state.attempts = 0;
+  state.misses = 0;
   state.hits = 0;
   state.perfectHits = 0;
+  state.completedRotations = 0;
+  state.emptyRotations = 0;
+  state.currentRotationHit = false;
+  state.finishResult = null;
   const records = loadRecordsForMode(currentRunDefinition());
   state.best = records.best;
   state.highLevel = records.highLevel;
@@ -1566,7 +1725,9 @@ function tick(timestamp) {
   state.lastTime = timestamp;
 
   if (state.mode === "playing") {
+    const previousAngle = state.angle;
     state.angle = normalizeAngle(state.angle + currentLevel().speed * delta);
+    trackCompletedRotation(previousAngle, state.angle);
     if (isTimeAttackRun()) {
       state.timeRemaining = Math.max(0, state.timeRemaining - delta);
       renderLives();
