@@ -914,6 +914,8 @@ function renderNoticeResult(result) {
     ["Skor Akhir", formatScore(state.score)],
     ["Bonus", `+${formatScore(result.points)}`],
     ["Perfect", `${result.perfectPercent}%`],
+    ["Kombo", `${result.comboPercent}%`],
+    ["Disiplin", result.noMiss ? "Tanpa Miss" : `${state.misses} Miss`],
   ].forEach(([label, value]) => {
     const item = document.createElement("span");
     const strong = document.createElement("strong");
@@ -1644,7 +1646,8 @@ function updateUI() {
   ui.resetMode.textContent = currentRunLabel();
   ui.difficultyPanel.hidden = false;
   ui.difficultyPanel.classList.toggle("is-locked", endless || timed);
-  ui.difficultyPanel.setAttribute("aria-hidden", String(endless || timed));
+  ui.difficultyPanel.setAttribute("aria-disabled", String(endless || timed));
+  ui.difficultyPanel.title = endless || timed ? "Kesulitan hanya aktif untuk mode Standard" : "";
   ui.progressRunHeader.hidden = endless;
   ui.progressRunMeter.hidden = endless;
   ui.highLevelMeter.hidden = endless;
@@ -1968,6 +1971,38 @@ function drawCenterLabel(center, radius) {
   ctx.restore();
 }
 
+function drawRoundedRect(x, y, width, height, radius) {
+  const right = x + width;
+  const bottom = y + height;
+  const r = Math.min(radius, width / 2, height / 2);
+
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(right - r, y);
+  ctx.quadraticCurveTo(right, y, right, y + r);
+  ctx.lineTo(right, bottom - r);
+  ctx.quadraticCurveTo(right, bottom, right - r, bottom);
+  ctx.lineTo(x + r, bottom);
+  ctx.quadraticCurveTo(x, bottom, x, bottom - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawTextPlate(text, centerX, centerY, font, color, alpha, minHeight) {
+  ctx.font = font;
+  const paddingX = Math.max(12, state.viewSize * 0.016);
+  const height = Math.max(minHeight, state.viewSize * 0.034);
+  const width = ctx.measureText(text).width + paddingX * 2;
+
+  ctx.fillStyle = `rgba(7, 10, 15, ${alpha * 0.58})`;
+  drawRoundedRect(centerX - width / 2, centerY - height / 2, width, height, height / 2);
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.fillText(text, centerX, centerY + Math.max(0.5, state.viewSize * 0.001));
+}
+
 function drawFlash(center, radius, flashRatio) {
   if (!state.flash) {
     return;
@@ -2086,14 +2121,26 @@ function drawFlash(center, radius, flashRatio) {
   ctx.fillText(state.flash.label, center, center - radius * config.lift);
 
   ctx.shadowBlur = 0;
-  ctx.fillStyle = `rgba(247, 248, 251, ${alpha * 0.96})`;
-  ctx.font = `900 ${Math.max(13, radius * 0.056)}px Inter, sans-serif`;
-  ctx.fillText(state.flash.scoreLabel, center, center - radius * (config.lift - 0.1));
+  drawTextPlate(
+    state.flash.scoreLabel,
+    center,
+    center - radius * (config.lift - 0.1),
+    `900 ${Math.max(13, radius * 0.056)}px Inter, sans-serif`,
+    `rgba(247, 248, 251, ${alpha * 0.96})`,
+    alpha,
+    Math.max(23, radius * 0.09)
+  );
 
   if (state.flash.detailLabel) {
-    ctx.fillStyle = `rgba(155, 167, 184, ${alpha * 0.92})`;
-    ctx.font = `800 ${Math.max(11, radius * 0.041)}px Inter, sans-serif`;
-    ctx.fillText(state.flash.detailLabel, center, center - radius * (config.lift - 0.19));
+    drawTextPlate(
+      state.flash.detailLabel,
+      center,
+      center - radius * (config.lift - 0.2),
+      `800 ${Math.max(11, radius * 0.041)}px Inter, sans-serif`,
+      `rgba(155, 167, 184, ${alpha * 0.92})`,
+      alpha * 0.78,
+      Math.max(19, radius * 0.072)
+    );
   }
 
   ctx.restore();
