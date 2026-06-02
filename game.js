@@ -142,7 +142,7 @@ const standardFinishScoring = {
 const modeDefinitions = {
   easy: {
     id: "easy",
-    label: "Mudah",
+    label: "easy",
     lives: 5,
     extraLifeScoreStep: 25000,
     segmentCounts: [
@@ -173,7 +173,7 @@ const modeDefinitions = {
   },
   normal: {
     id: "normal",
-    label: "Normal",
+    label: "normal",
     lives: 5,
     extraLifeScoreStep: 50000,
     segmentCounts: [
@@ -205,7 +205,7 @@ const modeDefinitions = {
   },
   hard: {
     id: "hard",
-    label: "Hard",
+    label: "hard",
     lives: 5,
     extraLifeScoreStep: 100000,
     segmentCounts: [
@@ -238,7 +238,7 @@ const modeDefinitions = {
   },
   extreme: {
     id: "extreme",
-    label: "Ekstrim",
+    label: "extreme",
     lives: 3,
     extraLifeScoreStep: 100000,
     segmentCounts: [
@@ -353,6 +353,7 @@ const state = {
   dpr: 1,
   flash: null,
   shake: 0,
+  floaters: [],
   transitionTimer: 0,
   currentSegmentIndex: -1,
   currentSegment: null,
@@ -787,6 +788,20 @@ function formatFailDetail() {
   return `Skor ${formatScore(state.score)} - Progres ${levelText} - Perfect ${currentPerfectPercent()}% - ${state.misses} miss - ${state.emptyRotations} putaran kosong`;
 }
 
+function addRotationFloater() {
+  state.floaters.push({
+    label: "Putaran kosong",
+    detail: `${state.emptyRotations}x tanpa hit`,
+    life: 1.12,
+    maxLife: 1.12,
+    angle: normalizeAngle(state.angle + Math.PI * 0.08),
+  });
+
+  if (state.floaters.length > 4) {
+    state.floaters.shift();
+  }
+}
+
 function trackCompletedRotation(previousAngle, nextAngle) {
   if (nextAngle >= previousAngle) {
     return;
@@ -795,6 +810,7 @@ function trackCompletedRotation(previousAngle, nextAngle) {
   state.completedRotations += 1;
   if (!state.currentRotationHit) {
     state.emptyRotations += 1;
+    addRotationFloater();
   }
   state.currentRotationHit = false;
 }
@@ -1023,6 +1039,7 @@ function loadLevel(index) {
   state.angle = normalizeAngle(degreesToRadians(11 + index * 13));
   state.flash = null;
   state.shake = 0;
+  state.floaters = [];
   state.currentSegmentIndex = -1;
   state.currentSegment = null;
   state.timeDisplayCache = "";
@@ -1286,7 +1303,7 @@ function handleHit() {
     const sizeBonus = Math.round(Math.min(80, 16 / Math.max(0.12, segment.span)));
 
     segment.cleared = true;
-    state.currentHits = clearedSegments();
+    state.currentHits = Math.min(state.segments.length, state.currentHits + 1);
     state.hits += 1;
     if (feedback === feedbackTiers.perfect) {
       state.perfectHits += 1;
@@ -1730,6 +1747,7 @@ function draw(timestamp = 0) {
   drawHub(center, radius, flashRatio);
   drawCenterLabel(center, radius);
   drawFlash(center, radius, flashRatio);
+  drawFloaters(center, radius);
 
   ctx.restore();
 }
@@ -2146,6 +2164,44 @@ function drawFlash(center, radius, flashRatio) {
   ctx.restore();
 }
 
+function drawFloaters(center, radius) {
+  if (state.floaters.length === 0) {
+    return;
+  }
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  state.floaters.forEach((floater, index) => {
+    const progress = 1 - floater.life / floater.maxLife;
+    const alpha = Math.max(0, 1 - progress);
+    const lift = radius * (0.08 + progress * 0.18 + index * 0.035);
+    const distance = radius * (0.48 + progress * 0.08);
+    const x = xFromAngle(center, floater.angle, distance);
+    const y = yFromAngle(center, floater.angle, distance) - lift;
+    const wobble = Math.sin(progress * Math.PI) * radius * 0.035;
+
+    ctx.fillStyle = `rgba(7, 10, 15, ${alpha * 0.62})`;
+    drawRoundedRect(x - radius * 0.27 + wobble, y - radius * 0.082, radius * 0.54, radius * 0.155, radius * 0.045);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255, 207, 75, ${alpha * 0.28})`;
+    ctx.lineWidth = Math.max(1, state.viewSize * 0.0018);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255, 207, 75, ${alpha})`;
+    ctx.font = `900 ${Math.max(12, radius * 0.045)}px Inter, sans-serif`;
+    ctx.fillText(floater.label, x + wobble, y - radius * 0.024);
+
+    ctx.fillStyle = `rgba(155, 167, 184, ${alpha * 0.9})`;
+    ctx.font = `800 ${Math.max(10, radius * 0.034)}px Inter, sans-serif`;
+    ctx.fillText(floater.detail, x + wobble, y + radius * 0.034);
+  });
+
+  ctx.restore();
+}
+
 function tick(timestamp) {
   const delta = state.lastTime ? Math.min((timestamp - state.lastTime) / 1000, 0.04) : 0;
   state.lastTime = timestamp;
@@ -2174,6 +2230,13 @@ function tick(timestamp) {
 
   if (state.shake > 0) {
     state.shake = Math.max(0, state.shake - delta);
+  }
+
+  if (state.floaters.length > 0) {
+    state.floaters.forEach((floater) => {
+      floater.life -= delta;
+    });
+    state.floaters = state.floaters.filter((floater) => floater.life > 0);
   }
 
   syncCurrentSegmentIndicator();

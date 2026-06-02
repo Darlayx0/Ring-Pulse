@@ -284,7 +284,6 @@ h1 {
   font-size: 0.86rem;
   font-weight: 900;
   line-height: 1.1;
-  text-transform: uppercase;
   background:
     linear-gradient(180deg, #ffe27b, var(--amber));
   box-shadow:
