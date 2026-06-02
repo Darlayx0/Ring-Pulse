@@ -40,6 +40,7 @@ const ui = {
   noticeKicker: document.querySelector("#noticeKicker"),
   noticeTitle: document.querySelector("#noticeTitle"),
   noticeDetail: document.querySelector("#noticeDetail"),
+  noticeResult: document.querySelector("#noticeResult"),
   startButton: document.querySelector("#startButton"),
   pauseButton: document.querySelector("#pauseButton"),
   restartButton: document.querySelector("#restartButton"),
@@ -60,7 +61,7 @@ const ui = {
   disciplineBonusTable: document.querySelector("#disciplineBonusTable"),
   difficultyPanel: document.querySelector("#difficultyPanel"),
   runModeOptions: Array.from(document.querySelectorAll(".mode-option")),
-  difficultyOptions: Array.from(document.querySelectorAll(".difficulty-option")),
+  difficultySelect: document.querySelector("#difficultySelect"),
   resetButtons: Array.from(document.querySelectorAll(".reset-button")),
   resetHighPerfectButton: document.querySelector("#resetHighPerfectButton"),
 };
@@ -324,6 +325,7 @@ const state = {
   runMode: "standard",
   difficulty: "normal",
   levelIndex: 0,
+  activeLevel: null,
   angle: 0,
   segments: [],
   currentHits: 0,
@@ -353,9 +355,12 @@ const state = {
   shake: 0,
   transitionTimer: 0,
   currentSegmentIndex: -1,
+  currentSegment: null,
+  timeDisplayCache: "",
 };
 
 let audioContext = null;
+let canvasResizeFrame = 0;
 
 function degreesToRadians(value) {
   return (value * Math.PI) / 180;
@@ -606,6 +611,15 @@ function currentRunLabel() {
   return currentRunDefinition().label;
 }
 
+function resolveLevel(index = state.levelIndex) {
+  if (isEndlessRun()) {
+    return createEndlessLevel(index);
+  }
+
+  const levels = currentRunDefinition().levels;
+  return levels[index] || levels[levels.length - 1];
+}
+
 function startNoticeKicker() {
   if (isEndlessRun()) {
     return endlessDefinition.label;
@@ -662,16 +676,11 @@ function timeRewardForFeedback(feedback) {
 }
 
 function currentLevel() {
-  if (isEndlessRun()) {
-    return createEndlessLevel(state.levelIndex);
-  }
-
-  const levels = currentRunDefinition().levels;
-  return levels[state.levelIndex] || levels[levels.length - 1];
+  return state.activeLevel || resolveLevel();
 }
 
 function clearedSegments() {
-  return state.segments.filter((segment) => segment.cleared).length;
+  return state.currentHits;
 }
 
 function remainingSegments() {
@@ -770,7 +779,7 @@ function calculateStandardFinishResult() {
 function formatFinishDetail(result) {
   const cleanText = result.noMiss ? "Tanpa miss" : `${state.misses} miss`;
   const tempoText = `${result.emptyRotationTier.label} (+${formatScore(result.emptyRotationTier.points)})`;
-  return `Rank ${result.rank} - Bonus +${formatScore(result.points)} - Perfect ${result.perfectPercent}% - Kombo ${result.comboPercent}% - ${cleanText} - ${tempoText}`;
+  return `Bonus +${formatScore(result.points)} - Kombo ${result.comboPercent}% - ${cleanText} - ${tempoText}`;
 }
 
 function formatFailDetail() {
@@ -874,11 +883,56 @@ function syncCanvasSize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function showNotice(kicker, title, actionText, detail = "", tone = "") {
+function queueCanvasResize() {
+  if (canvasResizeFrame) {
+    return;
+  }
+
+  canvasResizeFrame = window.requestAnimationFrame(() => {
+    canvasResizeFrame = 0;
+    syncCanvasSize();
+  });
+}
+
+function renderNoticeResult(result) {
+  ui.noticeResult.innerHTML = "";
+  ui.notice.classList.toggle("has-result", Boolean(result));
+
+  if (!result) {
+    ui.noticeResult.hidden = true;
+    return;
+  }
+
+  const medal = document.createElement("strong");
+  medal.className = "rank-medal";
+  medal.textContent = result.rank;
+  medal.setAttribute("aria-label", `Rank ${result.rank}`);
+
+  const breakdown = document.createElement("div");
+  breakdown.className = "rank-breakdown";
+  [
+    ["Skor Akhir", formatScore(state.score)],
+    ["Bonus", `+${formatScore(result.points)}`],
+    ["Perfect", `${result.perfectPercent}%`],
+  ].forEach(([label, value]) => {
+    const item = document.createElement("span");
+    const strong = document.createElement("strong");
+    item.textContent = label;
+    strong.textContent = value;
+    item.appendChild(strong);
+    breakdown.appendChild(item);
+  });
+
+  ui.noticeResult.append(medal, breakdown);
+  ui.noticeResult.hidden = false;
+}
+
+function showNotice(kicker, title, actionText, detail = "", tone = "", result = null) {
   ui.noticeKicker.textContent = kicker;
   ui.noticeTitle.textContent = title;
   ui.noticeDetail.textContent = detail;
   ui.noticeDetail.hidden = detail.length === 0;
+  renderNoticeResult(result);
   ui.notice.classList.remove("is-success", "is-fail", "is-paused");
   if (tone) {
     ui.notice.classList.add(`is-${tone}`);
@@ -960,13 +1014,16 @@ function generateSegments(level) {
 
 function loadLevel(index) {
   state.levelIndex = index;
-  state.segments = generateSegments(currentLevel());
+  state.activeLevel = resolveLevel(index);
+  state.segments = generateSegments(state.activeLevel);
   state.currentHits = 0;
   state.currentRotationHit = false;
   state.angle = normalizeAngle(degreesToRadians(11 + index * 13));
   state.flash = null;
   state.shake = 0;
   state.currentSegmentIndex = -1;
+  state.currentSegment = null;
+  state.timeDisplayCache = "";
   renderSegmentStrip();
   updateUI();
 }
@@ -1046,10 +1103,11 @@ function completeGame() {
   updateUI();
   showNotice(
     "Ring Pulse",
-    finishResult ? `Tuntas ${finishResult.rank}` : "Tuntas",
+    finishResult ? `Tuntas - Rank ${finishResult.rank}` : "Tuntas",
     "Main Lagi",
     finishResult ? formatFinishDetail(finishResult) : "",
-    "success"
+    "success",
+    finishResult
   );
   playTone("complete");
 }
@@ -1099,7 +1157,23 @@ function updateRecords() {
 
 function findSegmentAtAngle(angle) {
   const normalized = normalizeAngle(angle);
-  return state.segments.find((segment) => normalized >= segment.start && normalized < segment.end) || state.segments[0];
+  let low = 0;
+  let high = state.segments.length - 1;
+
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const segment = state.segments[middle];
+
+    if (normalized < segment.start) {
+      high = middle - 1;
+    } else if (normalized >= segment.end) {
+      low = middle + 1;
+    } else {
+      return segment;
+    }
+  }
+
+  return state.segments[0];
 }
 
 function feedbackForSegment(segment, angle) {
@@ -1115,6 +1189,84 @@ function feedbackForSegment(segment, angle) {
   }
 
   return feedbackTiers.hit;
+}
+
+function feedbackKind(feedback) {
+  if (feedback === feedbackTiers.perfect) {
+    return "perfect";
+  }
+
+  if (feedback === feedbackTiers.good) {
+    return "good";
+  }
+
+  return "safe";
+}
+
+function flashDuration(kind) {
+  return {
+    perfect: 0.74,
+    good: 0.58,
+    safe: 0.5,
+    miss: 0.54,
+  }[kind] || 0.5;
+}
+
+function createFlashParticles(kind, segment, count) {
+  const centerAngle = segment ? segment.start + segment.span / 2 : state.angle;
+  const span = segment?.span ?? TAU;
+  const spread = kind === "perfect" ? span * 2.25 : kind === "miss" ? span * 1.35 : span * 1.6;
+  const seedBase = state.attempts * 131 + state.levelIndex * 37 + (segment?.index ?? 0) * 19;
+
+  return Array.from({ length: count }, (_, index) => {
+    const seed = seedBase + index * 17;
+    const arcOffset = (seededUnit(seed) - 0.5) * spread;
+    const drift = (seededUnit(seed + 5) - 0.5) * 0.28;
+    return {
+      angle: normalizeAngle(centerAngle + arcOffset),
+      drift,
+      distance: 0.3 + seededUnit(seed + 9) * 0.58,
+      size: 0.55 + seededUnit(seed + 13) * 0.95,
+      delay: seededUnit(seed + 21) * 0.12,
+    };
+  });
+}
+
+function createHitFlash(feedback, segment, points, timeReward) {
+  const kind = feedbackKind(feedback);
+  const duration = flashDuration(kind);
+  const particleCount = kind === "perfect" ? 22 : kind === "good" ? 13 : 8;
+
+  return {
+    kind,
+    life: duration,
+    maxLife: duration,
+    label: feedback.label,
+    scoreLabel: `+${formatScore(points)} poin`,
+    detailLabel: isTimeAttackRun()
+      ? `+${timeReward}s waktu`
+      : state.combo > 0
+        ? `${state.combo} kombo`
+        : "Aman",
+    color: feedback.color,
+    segmentIndex: segment.index,
+    particles: createFlashParticles(kind, segment, particleCount),
+  };
+}
+
+function createMissFlash() {
+  const duration = flashDuration("miss");
+  return {
+    kind: "miss",
+    life: duration,
+    maxLife: duration,
+    label: "Miss",
+    scoreLabel: isTimeAttackRun() ? "-10s waktu" : "0 poin",
+    detailLabel: isTimeAttackRun() ? "Timer terkena penalti" : `${state.misses} miss`,
+    color: "#ff5b57",
+    segmentIndex: state.currentSegmentIndex,
+    particles: createFlashParticles("miss", state.currentSegment, 7),
+  };
 }
 
 function handleHit() {
@@ -1141,15 +1293,9 @@ function handleHit() {
     state.maxCombo = Math.max(state.maxCombo, state.combo);
     state.currentRotationHit = true;
     adjustTime(timeReward);
-    addScore(feedback.score + sizeBonus + state.combo * 13 + state.levelIndex * 9);
-    state.flash = {
-      kind: feedback === feedbackTiers.perfect ? "perfect" : feedback === feedbackTiers.good ? "good" : "hit",
-      life: 0.42,
-      maxLife: 0.42,
-      label: isTimeAttackRun() ? `${feedback.label} +${timeReward}s` : feedback.label,
-      color: feedback.color,
-      segmentIndex: segment.index,
-    };
+    const hitPoints = feedback.score + sizeBonus + state.combo * 13 + state.levelIndex * 9;
+    addScore(hitPoints);
+    state.flash = createHitFlash(feedback, segment, hitPoints, timeReward);
 
     playTone(feedback.tone);
     navigator.vibrate?.(24);
@@ -1168,12 +1314,7 @@ function handleHit() {
     }
     state.misses += 1;
     state.combo = 0;
-    state.flash = {
-      kind: "miss",
-      life: 0.48,
-      maxLife: 0.48,
-      label: isTimeAttackRun() ? "Kosong -10s" : "Kosong",
-    };
+    state.flash = createMissFlash();
     state.shake = 0.28;
     playTone("miss");
     navigator.vibrate?.(70);
@@ -1410,6 +1551,7 @@ function updateSegmentStrip() {
 function syncCurrentSegmentIndicator() {
   const segment = findSegmentAtAngle(state.angle);
   const nextIndex = segment?.index ?? -1;
+  state.currentSegment = segment || null;
   if (nextIndex !== state.currentSegmentIndex) {
     state.currentSegmentIndex = nextIndex;
     updateSegmentStrip();
@@ -1419,14 +1561,21 @@ function syncCurrentSegmentIndicator() {
 function renderLives() {
   if (isTimeAttackRun()) {
     const timeText = formatDuration(state.timeRemaining);
+    const isLow = state.timeRemaining <= 10;
+    const cacheKey = `${timeText}:${isLow}`;
     ui.lifeLabel.textContent = "Waktu";
+    if (state.timeDisplayCache === cacheKey) {
+      return;
+    }
+    state.timeDisplayCache = cacheKey;
     ui.life.className = "time-status";
     ui.life.textContent = timeText;
     ui.life.setAttribute("aria-label", `${timeText} tersisa`);
-    ui.life.classList.toggle("is-low", state.timeRemaining <= 10);
+    ui.life.classList.toggle("is-low", isLow);
     return;
   }
 
+  state.timeDisplayCache = "";
   const startingLives = currentRunDefinition().lives;
   ui.lifeLabel.textContent = "Nyawa";
   ui.life.innerHTML = "";
@@ -1467,7 +1616,7 @@ function updateUI() {
   const highLevelProgress = endless ? (state.highLevel > 0 ? 100 : 0) : Math.round((state.highLevel / runLevels.length) * 100);
   const hasCompletedMode = !endless && state.highLevel >= runLevels.length;
 
-  ui.title.textContent = "Ring Pulse";
+  ui.title.setAttribute("aria-label", "Ring Pulse");
   ui.level.textContent = endless ? `Level ${levelNumber}` : `${levelNumber}/${runLevels.length}`;
   ui.score.textContent = formatScore(state.score);
   ui.highScore.textContent = formatScore(state.best);
@@ -1493,7 +1642,9 @@ function updateUI() {
   ui.cleared.textContent = `${cleared}/${level.segments}`;
   ui.sessionMode.textContent = currentRunLabel();
   ui.resetMode.textContent = currentRunLabel();
-  ui.difficultyPanel.hidden = endless || timed;
+  ui.difficultyPanel.hidden = false;
+  ui.difficultyPanel.classList.toggle("is-locked", endless || timed);
+  ui.difficultyPanel.setAttribute("aria-hidden", String(endless || timed));
   ui.progressRunHeader.hidden = endless;
   ui.progressRunMeter.hidden = endless;
   ui.highLevelMeter.hidden = endless;
@@ -1517,12 +1668,8 @@ function updateUI() {
     button.setAttribute("aria-pressed", String(isActive));
   });
 
-  ui.difficultyOptions.forEach((button) => {
-    const isActive = button.dataset.difficulty === state.difficulty;
-    button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-pressed", String(isActive));
-    button.disabled = endless || timed;
-  });
+  ui.difficultySelect.value = state.difficulty;
+  ui.difficultySelect.disabled = endless || timed;
 
   ui.pauseButton.disabled = !(state.mode === "playing" || state.mode === "paused");
   updateSegmentStrip();
@@ -1562,7 +1709,6 @@ function playTone(kind) {
 }
 
 function draw(timestamp = 0) {
-  syncCanvasSize();
   const size = state.viewSize;
   const center = size / 2;
   const radius = size * 0.365;
@@ -1574,7 +1720,7 @@ function draw(timestamp = 0) {
   ctx.save();
   ctx.translate(shakeOffset, 0);
 
-  drawBackdrop(center, outerRadius);
+  drawBackdrop(center, outerRadius, timestamp);
   drawHitRing(center, radius);
   drawTickMarks(center, radius);
   drawNeedle(center, radius);
@@ -1585,9 +1731,9 @@ function draw(timestamp = 0) {
   ctx.restore();
 }
 
-function drawBackdrop(center, outerRadius) {
+function drawBackdrop(center, outerRadius, timestamp = 0) {
   const size = state.viewSize;
-  const pulse = state.mode === "playing" ? 0.16 + Math.sin(performance.now() * 0.004) * 0.03 : 0.08;
+  const pulse = state.mode === "playing" ? 0.16 + Math.sin(timestamp * 0.004) * 0.03 : 0.08;
   const surfaceGradient = ctx.createRadialGradient(center, center, outerRadius * 0.14, center, center, outerRadius);
   surfaceGradient.addColorStop(0, "#151b25");
   surfaceGradient.addColorStop(0.58, "#0d131b");
@@ -1662,7 +1808,7 @@ function drawFeedbackBorders(center, radius, segment, isCurrent) {
 }
 
 function drawHitRing(center, radius) {
-  const current = findSegmentAtAngle(state.angle);
+  const current = state.currentSegment || findSegmentAtAngle(state.angle);
   const innerRadius = radius * 0.78;
   const outerRadius = radius * 1.08;
 
@@ -1744,7 +1890,7 @@ function drawNeedle(center, radius) {
   const endY = yFromAngle(center, state.angle, radius * 1.12);
   const tailX = xFromAngle(center, state.angle + Math.PI, radius * 0.12);
   const tailY = yFromAngle(center, state.angle + Math.PI, radius * 0.12);
-  const current = findSegmentAtAngle(state.angle);
+  const current = state.currentSegment || findSegmentAtAngle(state.angle);
   const emptyZone = current?.cleared;
   const needleColor = emptyZone ? "#ff5b57" : "#ffcf4b";
 
@@ -1827,27 +1973,129 @@ function drawFlash(center, radius, flashRatio) {
     return;
   }
 
-  const colors = {
-    hit: "40, 224, 166",
-    good: "75, 141, 255",
-    perfect: "255, 207, 75",
-    miss: "255, 91, 87",
+  const configs = {
+    safe: {
+      rgb: "40, 224, 166",
+      accent: "#28e0a6",
+      scale: 0.88,
+      lift: 0.33,
+      ringAlpha: 0.38,
+    },
+    good: {
+      rgb: "75, 141, 255",
+      accent: "#4b8dff",
+      scale: 1,
+      lift: 0.37,
+      ringAlpha: 0.44,
+    },
+    perfect: {
+      rgb: "255, 207, 75",
+      accent: "#ffcf4b",
+      scale: 1.18,
+      lift: 0.43,
+      ringAlpha: 0.58,
+    },
+    miss: {
+      rgb: "255, 91, 87",
+      accent: "#ff5b57",
+      scale: 0.94,
+      lift: 0.35,
+      ringAlpha: 0.42,
+    },
   };
-  const color = colors[state.flash.kind] || colors.hit;
+  const config = configs[state.flash.kind] || configs.safe;
   const alpha = Math.max(0, 1 - flashRatio);
+  const eased = 1 - (1 - flashRatio) ** 2;
 
   ctx.save();
-  ctx.strokeStyle = `rgba(${color}, ${alpha * 0.48})`;
-  ctx.lineWidth = Math.max(3, state.viewSize * 0.006);
+
+  const aura = ctx.createRadialGradient(center, center, radius * 0.16, center, center, radius * (0.72 + eased * 0.2));
+  aura.addColorStop(0, `rgba(${config.rgb}, ${alpha * (state.flash.kind === "perfect" ? 0.22 : 0.13)})`);
+  aura.addColorStop(0.62, `rgba(${config.rgb}, ${alpha * 0.05})`);
+  aura.addColorStop(1, `rgba(${config.rgb}, 0)`);
+  ctx.fillStyle = aura;
   ctx.beginPath();
-  ctx.arc(center, center, radius * (0.32 + flashRatio * 0.72), 0, TAU);
+  ctx.arc(center, center, radius * (0.78 + eased * 0.25), 0, TAU);
+  ctx.fill();
+
+  if (state.flash.kind === "perfect") {
+    ctx.lineCap = "round";
+    for (let index = 0; index < 18; index += 1) {
+      const angle = (index / 18) * TAU + eased * 0.18;
+      const inner = radius * (0.36 + eased * 0.08);
+      const outer = radius * (0.62 + eased * 0.3);
+      ctx.strokeStyle = `rgba(${config.rgb}, ${alpha * 0.17})`;
+      ctx.lineWidth = Math.max(1.2, state.viewSize * 0.0024);
+      ctx.beginPath();
+      ctx.moveTo(xFromAngle(center, angle, inner), yFromAngle(center, angle, inner));
+      ctx.lineTo(xFromAngle(center, angle, outer), yFromAngle(center, angle, outer));
+      ctx.stroke();
+    }
+  }
+
+  ctx.lineCap = "round";
+  ctx.strokeStyle = `rgba(${config.rgb}, ${alpha * config.ringAlpha})`;
+  ctx.shadowColor = `rgba(${config.rgb}, ${alpha * 0.5})`;
+  ctx.shadowBlur = state.flash.kind === "perfect" ? 26 : 14;
+  ctx.lineWidth = Math.max(3, state.viewSize * 0.006 * config.scale);
+  ctx.beginPath();
+  ctx.arc(center, center, radius * (0.3 + eased * 0.72), 0, TAU);
   ctx.stroke();
 
-  ctx.fillStyle = `rgba(${color}, ${alpha})`;
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * (state.flash.kind === "perfect" ? 0.38 : 0.2)})`;
+  ctx.lineWidth = Math.max(1.4, state.viewSize * 0.0024);
+  ctx.beginPath();
+  ctx.arc(center, center, radius * (0.22 + eased * 0.38), 0, TAU);
+  ctx.stroke();
+
+  state.flash.particles?.forEach((particle) => {
+    const particleProgress = Math.max(0, Math.min(1, (flashRatio - particle.delay) / Math.max(0.01, 1 - particle.delay)));
+    if (particleProgress <= 0) {
+      return;
+    }
+
+    const particleAlpha = alpha * (1 - particleProgress * 0.78);
+    const angle = particle.angle + particle.drift * particleProgress;
+    const distance = radius * (0.34 + particle.distance * particleProgress);
+    const x = xFromAngle(center, angle, distance);
+    const y = yFromAngle(center, angle, distance);
+    ctx.fillStyle = `rgba(${config.rgb}, ${particleAlpha})`;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(2, state.viewSize * 0.004 * particle.size), 0, TAU);
+    ctx.fill();
+  });
+
+  if (state.flash.kind === "miss") {
+    ctx.strokeStyle = `rgba(${config.rgb}, ${alpha * 0.34})`;
+    ctx.lineWidth = Math.max(5, state.viewSize * 0.008);
+    ctx.beginPath();
+    ctx.moveTo(center - radius * 0.16, center - radius * 0.16);
+    ctx.lineTo(center + radius * 0.16, center + radius * 0.16);
+    ctx.moveTo(center + radius * 0.16, center - radius * 0.16);
+    ctx.lineTo(center - radius * 0.16, center + radius * 0.16);
+    ctx.stroke();
+  }
+
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `900 ${Math.max(15, radius * 0.075)}px Inter, sans-serif`;
-  ctx.fillText(state.flash.label, center, center - radius * 0.34);
+  ctx.shadowColor = `rgba(${config.rgb}, ${alpha * 0.5})`;
+  ctx.shadowBlur = state.flash.kind === "perfect" ? 18 : 10;
+  ctx.fillStyle = `rgba(${config.rgb}, ${alpha})`;
+  ctx.font = `950 ${Math.max(17, radius * 0.09 * config.scale)}px Inter, sans-serif`;
+  ctx.fillText(state.flash.label, center, center - radius * config.lift);
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = `rgba(247, 248, 251, ${alpha * 0.96})`;
+  ctx.font = `900 ${Math.max(13, radius * 0.056)}px Inter, sans-serif`;
+  ctx.fillText(state.flash.scoreLabel, center, center - radius * (config.lift - 0.1));
+
+  if (state.flash.detailLabel) {
+    ctx.fillStyle = `rgba(155, 167, 184, ${alpha * 0.92})`;
+    ctx.font = `800 ${Math.max(11, radius * 0.041)}px Inter, sans-serif`;
+    ctx.fillText(state.flash.detailLabel, center, center - radius * (config.lift - 0.19));
+  }
+
   ctx.restore();
 }
 
@@ -1910,10 +2158,8 @@ ui.resetDialog.addEventListener("click", (event) => {
     closeResetWindow();
   }
 });
-ui.difficultyOptions.forEach((button) => {
-  button.addEventListener("click", () => {
-    setDifficulty(button.dataset.difficulty);
-  });
+ui.difficultySelect.addEventListener("change", () => {
+  setDifficulty(ui.difficultySelect.value);
 });
 ui.runModeOptions.forEach((button) => {
   button.addEventListener("click", () => {
@@ -1943,11 +2189,12 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-window.addEventListener("resize", syncCanvasSize);
+window.addEventListener("resize", queueCanvasResize);
 
 if ("ResizeObserver" in window) {
-  new ResizeObserver(syncCanvasSize).observe(canvas);
+  new ResizeObserver(queueCanvasResize).observe(canvas);
 }
 
 resetCurrentRun();
+syncCanvasSize();
 requestAnimationFrame(tick);

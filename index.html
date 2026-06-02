@@ -21,8 +21,11 @@
             </svg>
           </div>
           <div class="identity-copy">
-            <p class="eyebrow">Ring Pulse</p>
-            <h1 id="gameTitle">Ring Pulse</h1>
+            <p class="eyebrow">Precision Timing</p>
+            <h1 id="gameTitle" aria-label="Ring Pulse">
+              <span class="title-word">Ring</span>
+              <span class="title-word">Pulse</span>
+            </h1>
           </div>
         </div>
 
@@ -45,24 +48,14 @@
         </div>
 
         <div class="difficulty-panel difficulty-hud" id="difficultyPanel" aria-label="Pilihan kesulitan">
-          <span class="difficulty-caption">Kesulitan</span>
-          <div class="difficulty-toggle" role="group" aria-label="Tingkat kesulitan standar">
-            <button class="difficulty-option" type="button" data-difficulty="easy">
-              <span class="option-title">Mudah</span>
-              <span class="option-meta">Santai</span>
-            </button>
-            <button class="difficulty-option is-active" type="button" data-difficulty="normal">
-              <span class="option-title">Normal</span>
-              <span class="option-meta">Seimbang</span>
-            </button>
-            <button class="difficulty-option" type="button" data-difficulty="hard">
-              <span class="option-title">Hard</span>
-              <span class="option-meta">Cepat</span>
-            </button>
-            <button class="difficulty-option" type="button" data-difficulty="extreme">
-              <span class="option-title">Ekstrim</span>
-              <span class="option-meta">3 nyawa</span>
-            </button>
+          <label class="difficulty-caption" for="difficultySelect">Kesulitan</label>
+          <div class="difficulty-select-wrap">
+            <select class="difficulty-select" id="difficultySelect" aria-label="Tingkat kesulitan standar">
+              <option value="easy">Mudah - Santai</option>
+              <option value="normal" selected>Normal - Seimbang</option>
+              <option value="hard">Hard - Cepat</option>
+              <option value="extreme">Ekstrim - 3 nyawa</option>
+            </select>
           </div>
         </div>
       </header>
@@ -124,6 +117,7 @@
               <p class="notice-kicker" id="noticeKicker">Normal - 25 Level</p>
               <h2 id="noticeTitle">Siap?</h2>
               <p class="notice-detail" id="noticeDetail" hidden></p>
+              <div class="notice-result" id="noticeResult" hidden></div>
               <button class="start-button" id="startButton" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M8 5v14l11-7L8 5z"></path>
