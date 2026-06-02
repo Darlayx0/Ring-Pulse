@@ -181,12 +181,66 @@
                 <span>Ulang</span>
               </button>
             </div>
-            <button class="reset-launcher" id="openResetButton" type="button" aria-haspopup="dialog" aria-controls="resetDialog">
-              Reset progress
-            </button>
+            <div class="utility-actions">
+              <button class="utility-button" id="openBonusButton" type="button" aria-haspopup="dialog" aria-controls="bonusDialog">
+                Bonus selesai
+              </button>
+              <button class="utility-button" id="openResetButton" type="button" aria-haspopup="dialog" aria-controls="resetDialog">
+                Reset progress
+              </button>
+            </div>
           </div>
         </aside>
       </section>
+
+      <dialog class="bonus-window" id="bonusDialog" aria-labelledby="bonusWindowTitle">
+        <div class="bonus-window-shell">
+          <div class="window-titlebar">
+            <div>
+              <span>Mode Standard</span>
+              <h2 id="bonusWindowTitle">Transparansi Bonus Selesai</h2>
+            </div>
+            <strong id="bonusMaxValue">Max 0</strong>
+            <button class="window-close" id="closeBonusButton" type="button" aria-label="Tutup">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="bonus-scroll">
+            <div class="bonus-formula">
+              <span>Formula</span>
+              <strong id="bonusFormulaValue">Base + Perfect + Kombo + Miss + Putaran Kosong</strong>
+            </div>
+
+            <div class="bonus-section">
+              <h3>Target Rank</h3>
+              <div class="bonus-table" id="rankBonusTable"></div>
+            </div>
+
+            <div class="bonus-section">
+              <h3>% Sempurna</h3>
+              <div class="bonus-table" id="perfectBonusTable"></div>
+            </div>
+
+            <div class="bonus-section">
+              <h3>Max Kombo</h3>
+              <div class="bonus-table" id="comboBonusTable"></div>
+            </div>
+
+            <div class="bonus-section">
+              <h3>Putaran Tanpa Hit</h3>
+              <div class="bonus-table" id="rotationBonusTable"></div>
+            </div>
+
+            <div class="bonus-section">
+              <h3>Bonus Disiplin</h3>
+              <div class="bonus-table" id="disciplineBonusTable"></div>
+            </div>
+          </div>
+        </div>
+      </dialog>
 
       <dialog class="reset-window" id="resetDialog" aria-labelledby="resetWindowTitle">
         <div class="reset-window-shell">

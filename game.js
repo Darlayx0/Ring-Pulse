@@ -48,6 +48,16 @@ const ui = {
   resetDialog: document.querySelector("#resetDialog"),
   openResetButton: document.querySelector("#openResetButton"),
   closeResetButton: document.querySelector("#closeResetButton"),
+  bonusDialog: document.querySelector("#bonusDialog"),
+  openBonusButton: document.querySelector("#openBonusButton"),
+  closeBonusButton: document.querySelector("#closeBonusButton"),
+  bonusMax: document.querySelector("#bonusMaxValue"),
+  bonusFormula: document.querySelector("#bonusFormulaValue"),
+  rankBonusTable: document.querySelector("#rankBonusTable"),
+  perfectBonusTable: document.querySelector("#perfectBonusTable"),
+  comboBonusTable: document.querySelector("#comboBonusTable"),
+  rotationBonusTable: document.querySelector("#rotationBonusTable"),
+  disciplineBonusTable: document.querySelector("#disciplineBonusTable"),
   difficultyPanel: document.querySelector("#difficultyPanel"),
   runModeOptions: Array.from(document.querySelectorAll(".mode-option")),
   difficultyOptions: Array.from(document.querySelectorAll(".difficulty-option")),
@@ -86,35 +96,44 @@ const feedbackTiers = {
 };
 
 const standardFinishScoring = {
-  basePoints: 1000,
+  basePoints: 800,
   perfectTiers: [
-    { min: 100, points: 3200, label: "100% Perfect" },
-    { min: 95, points: 2600, label: "95%+ Perfect" },
+    { min: 100, points: 3300, label: "100% Perfect" },
+    { min: 97, points: 2900, label: "97%+ Perfect" },
+    { min: 94, points: 2500, label: "94%+ Perfect" },
     { min: 90, points: 2100, label: "90%+ Perfect" },
     { min: 85, points: 1700, label: "85%+ Perfect" },
     { min: 80, points: 1300, label: "80%+ Perfect" },
     { min: 70, points: 900, label: "70%+ Perfect" },
     { min: 60, points: 550, label: "60%+ Perfect" },
-    { min: 0, points: 250, label: "<60% Perfect" },
+    { min: 0, points: 200, label: "<60% Perfect" },
   ],
   comboTiers: [
-    { min: 90, points: 2200, label: "90%+ Max Combo" },
+    { min: 95, points: 2400, label: "95%+ Max Combo" },
+    { min: 85, points: 2050, label: "85%+ Max Combo" },
     { min: 75, points: 1700, label: "75%+ Max Combo" },
     { min: 60, points: 1250, label: "60%+ Max Combo" },
     { min: 45, points: 850, label: "45%+ Max Combo" },
     { min: 30, points: 500, label: "30%+ Max Combo" },
-    { min: 0, points: 250, label: "<30% Max Combo" },
+    { min: 0, points: 200, label: "<30% Max Combo" },
+  ],
+  emptyRotationTiers: [
+    { max: 0, points: 1200, label: "0 putaran kosong" },
+    { max: 1, points: 900, label: "1 putaran kosong" },
+    { max: 2, points: 650, label: "2 putaran kosong" },
+    { max: 3, points: 400, label: "3 putaran kosong" },
+    { max: 5, points: 200, label: "4-5 putaran kosong" },
+    { max: Number.POSITIVE_INFINITY, points: 0, label: "6+ putaran kosong" },
   ],
   noMissPoints: 1400,
-  allRotationsHitPoints: 1000,
   ranks: [
-    { rank: "S+", min: 8600 },
-    { rank: "S", min: 7800 },
-    { rank: "A+", min: 7000 },
-    { rank: "A", min: 5900 },
-    { rank: "B+", min: 4800 },
-    { rank: "B", min: 3600 },
-    { rank: "C", min: 2400 },
+    { rank: "S+", min: 9000 },
+    { rank: "S", min: 8500 },
+    { rank: "A+", min: 7600 },
+    { rank: "A", min: 6400 },
+    { rank: "B+", min: 5200 },
+    { rank: "B", min: 4000 },
+    { rank: "C", min: 2500 },
     { rank: "D", min: 0 },
   ],
 };
@@ -691,19 +710,45 @@ function findScoringTier(tiers, value) {
   return tiers.find((tier) => value >= tier.min) || tiers[tiers.length - 1];
 }
 
+function findEmptyRotationTier(value) {
+  return standardFinishScoring.emptyRotationTiers.find((tier) => value <= tier.max)
+    || standardFinishScoring.emptyRotationTiers[standardFinishScoring.emptyRotationTiers.length - 1];
+}
+
+function maxFinishBonusPoints() {
+  return standardFinishScoring.basePoints
+    + standardFinishScoring.perfectTiers[0].points
+    + standardFinishScoring.comboTiers[0].points
+    + standardFinishScoring.noMissPoints
+    + standardFinishScoring.emptyRotationTiers[0].points;
+}
+
+function formatMinTarget(value, suffix = "") {
+  return value === 0 ? "Semua run" : `${value}${suffix}+`;
+}
+
+function formatRotationTarget(tier) {
+  if (!Number.isFinite(tier.max)) {
+    return "6+ putaran kosong";
+  }
+
+  return tier.max === 0 ? "0 putaran kosong" : `Maks ${tier.max} putaran kosong`;
+}
+
 function calculateStandardFinishResult() {
   const totalSegments = totalRingsForRun();
   const perfectPercent = currentPerfectPercent();
   const comboPercent = totalSegments === 0 ? 0 : Math.round((state.maxCombo / totalSegments) * 100);
   const perfectTier = findScoringTier(standardFinishScoring.perfectTiers, perfectPercent);
   const comboTier = findScoringTier(standardFinishScoring.comboTiers, comboPercent);
+  const emptyRotationTier = findEmptyRotationTier(state.emptyRotations);
   const noMiss = state.misses === 0;
   const allRotationsHit = state.emptyRotations === 0;
   const points = standardFinishScoring.basePoints
     + perfectTier.points
     + comboTier.points
     + (noMiss ? standardFinishScoring.noMissPoints : 0)
-    + (allRotationsHit ? standardFinishScoring.allRotationsHitPoints : 0);
+    + emptyRotationTier.points;
   const rankTier = findScoringTier(standardFinishScoring.ranks, points);
 
   return {
@@ -718,13 +763,19 @@ function calculateStandardFinishResult() {
     emptyRotations: state.emptyRotations,
     perfectTier,
     comboTier,
+    emptyRotationTier,
   };
 }
 
 function formatFinishDetail(result) {
   const cleanText = result.noMiss ? "Tanpa miss" : `${state.misses} miss`;
-  const tempoText = result.allRotationsHit ? "Tempo penuh" : `${result.emptyRotations} putaran kosong`;
+  const tempoText = `${result.emptyRotationTier.label} (+${formatScore(result.emptyRotationTier.points)})`;
   return `Rank ${result.rank} - Bonus +${formatScore(result.points)} - Perfect ${result.perfectPercent}% - Kombo ${result.comboPercent}% - ${cleanText} - ${tempoText}`;
+}
+
+function formatFailDetail() {
+  const levelText = isEndlessRun() ? `Level ${state.levelIndex + 1}` : `${state.completedLevels}/${currentRunDefinition().levels.length} level`;
+  return `Skor ${formatScore(state.score)} - Progres ${levelText} - Perfect ${currentPerfectPercent()}% - ${state.misses} miss - ${state.emptyRotations} putaran kosong`;
 }
 
 function trackCompletedRotation(previousAngle, nextAngle) {
@@ -737,6 +788,62 @@ function trackCompletedRotation(previousAngle, nextAngle) {
     state.emptyRotations += 1;
   }
   state.currentRotationHit = false;
+}
+
+function renderBonusRows(container, rows) {
+  container.innerHTML = "";
+  rows.forEach((row) => {
+    const item = document.createElement("div");
+    item.className = "bonus-row";
+
+    const label = document.createElement("span");
+    label.textContent = row.label;
+
+    const value = document.createElement("strong");
+    value.textContent = row.value;
+
+    item.append(label, value);
+    container.appendChild(item);
+  });
+}
+
+function renderBonusTransparency() {
+  ui.bonusMax.textContent = `Max ${formatScore(maxFinishBonusPoints())}`;
+  ui.bonusFormula.textContent = `Base ${formatScore(standardFinishScoring.basePoints)} + % Sempurna + Max Kombo + Tanpa Miss + Putaran Tanpa Hit`;
+
+  renderBonusRows(
+    ui.rankBonusTable,
+    standardFinishScoring.ranks.map((tier) => ({
+      label: `Rank ${tier.rank}`,
+      value: `${formatScore(tier.min)}+ poin selesai`,
+    }))
+  );
+  renderBonusRows(
+    ui.perfectBonusTable,
+    standardFinishScoring.perfectTiers.map((tier) => ({
+      label: formatMinTarget(tier.min, "%"),
+      value: `+${formatScore(tier.points)}`,
+    }))
+  );
+  renderBonusRows(
+    ui.comboBonusTable,
+    standardFinishScoring.comboTiers.map((tier) => ({
+      label: `${formatMinTarget(tier.min, "%")} dari total segmen`,
+      value: `+${formatScore(tier.points)}`,
+    }))
+  );
+  renderBonusRows(
+    ui.rotationBonusTable,
+    standardFinishScoring.emptyRotationTiers.map((tier) => ({
+      label: formatRotationTarget(tier),
+      value: `+${formatScore(tier.points)}`,
+    }))
+  );
+  renderBonusRows(ui.disciplineBonusTable, [
+    { label: "Base selesai Standard", value: `+${formatScore(standardFinishScoring.basePoints)}` },
+    { label: "Tidak pernah miss", value: `+${formatScore(standardFinishScoring.noMissPoints)}` },
+    { label: "Jika ada miss", value: "+0" },
+  ]);
 }
 
 function setupLevelGrid() {
@@ -767,11 +874,15 @@ function syncCanvasSize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function showNotice(kicker, title, actionText, detail = "") {
+function showNotice(kicker, title, actionText, detail = "", tone = "") {
   ui.noticeKicker.textContent = kicker;
   ui.noticeTitle.textContent = title;
   ui.noticeDetail.textContent = detail;
   ui.noticeDetail.hidden = detail.length === 0;
+  ui.notice.classList.remove("is-success", "is-fail", "is-paused");
+  if (tone) {
+    ui.notice.classList.add(`is-${tone}`);
+  }
   const buttonLabel = ui.startButton.querySelector("span");
   if (buttonLabel) {
     buttonLabel.textContent = actionText;
@@ -937,7 +1048,8 @@ function completeGame() {
     "Ring Pulse",
     finishResult ? `Tuntas ${finishResult.rank}` : "Tuntas",
     "Main Lagi",
-    finishResult ? formatFinishDetail(finishResult) : ""
+    finishResult ? formatFinishDetail(finishResult) : "",
+    "success"
   );
   playTone("complete");
 }
@@ -948,7 +1060,7 @@ function gameOver() {
   state.shake = 0;
   updateRecords();
   updateUI();
-  showNotice(`Level ${state.levelIndex + 1}`, "Gagal", "Ulang");
+  showNotice(`Level ${state.levelIndex + 1}`, "Gagal", "Ulang", formatFailDetail(), "fail");
   playTone("fail");
 }
 
@@ -1095,7 +1207,7 @@ function handlePrimaryAction() {
 function togglePause() {
   if (state.mode === "playing") {
     state.mode = "paused";
-    showNotice(`Level ${state.levelIndex + 1}`, "Jeda", "Lanjut");
+    showNotice(`Level ${state.levelIndex + 1}`, "Jeda", "Lanjut", "", "paused");
   } else if (state.mode === "paused") {
     state.mode = "playing";
     hideNotice();
@@ -1210,6 +1322,25 @@ function closeResetWindow() {
   }
 
   ui.resetDialog.removeAttribute("open");
+}
+
+function openBonusWindow() {
+  renderBonusTransparency();
+  if (typeof ui.bonusDialog.showModal === "function") {
+    ui.bonusDialog.showModal();
+    return;
+  }
+
+  ui.bonusDialog.setAttribute("open", "");
+}
+
+function closeBonusWindow() {
+  if (typeof ui.bonusDialog.close === "function") {
+    ui.bonusDialog.close();
+    return;
+  }
+
+  ui.bonusDialog.removeAttribute("open");
 }
 
 function resetProgress(scope) {
@@ -1765,8 +1896,15 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 ui.pauseButton.addEventListener("click", togglePause);
 ui.restartButton.addEventListener("click", startGame);
+ui.openBonusButton.addEventListener("click", openBonusWindow);
+ui.closeBonusButton.addEventListener("click", closeBonusWindow);
 ui.openResetButton.addEventListener("click", openResetWindow);
 ui.closeResetButton.addEventListener("click", closeResetWindow);
+ui.bonusDialog.addEventListener("click", (event) => {
+  if (event.target === ui.bonusDialog) {
+    closeBonusWindow();
+  }
+});
 ui.resetDialog.addEventListener("click", (event) => {
   if (event.target === ui.resetDialog) {
     closeResetWindow();
