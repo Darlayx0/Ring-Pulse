@@ -29,18 +29,36 @@
         <div class="mode-panel mode-hud" aria-label="Pilihan mode permainan">
           <span class="mode-caption">Mode</span>
           <div class="mode-toggle" role="group" aria-label="Mode permainan">
-            <button class="mode-option is-active" type="button" data-run-mode="standard">Standard</button>
-            <button class="mode-option" type="button" data-run-mode="time-attack">Time Attack</button>
-            <button class="mode-option" type="button" data-run-mode="endless">Endless</button>
+            <button class="mode-option is-active" type="button" data-run-mode="standard">
+              <span class="option-title">Standard</span>
+              <span class="option-meta">Level run</span>
+            </button>
+            <button class="mode-option" type="button" data-run-mode="time-attack">
+              <span class="option-title">Time Attack</span>
+              <span class="option-meta">Timer</span>
+            </button>
+            <button class="mode-option" type="button" data-run-mode="endless">
+              <span class="option-title">Endless</span>
+              <span class="option-meta">Survival</span>
+            </button>
           </div>
         </div>
 
         <div class="difficulty-panel difficulty-hud" id="difficultyPanel" aria-label="Pilihan kesulitan">
           <span class="difficulty-caption">Kesulitan</span>
           <div class="difficulty-toggle" role="group" aria-label="Tingkat kesulitan standar">
-            <button class="difficulty-option" type="button" data-difficulty="easy">Mudah</button>
-            <button class="difficulty-option is-active" type="button" data-difficulty="normal">Normal</button>
-            <button class="difficulty-option" type="button" data-difficulty="hard">Hard</button>
+            <button class="difficulty-option" type="button" data-difficulty="easy">
+              <span class="option-title">Mudah</span>
+              <span class="option-meta">Santai</span>
+            </button>
+            <button class="difficulty-option is-active" type="button" data-difficulty="normal">
+              <span class="option-title">Normal</span>
+              <span class="option-meta">Seimbang</span>
+            </button>
+            <button class="difficulty-option" type="button" data-difficulty="hard">
+              <span class="option-title">Hard</span>
+              <span class="option-meta">Cepat</span>
+            </button>
           </div>
         </div>
       </header>

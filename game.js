@@ -1,5 +1,11 @@
 const TAU = Math.PI * 2;
 const STORAGE_PREFIX = "lingkaran.standard";
+const SEGMENT_BALANCE = {
+  version: 2,
+  spread: 0.58,
+  minRatio: 0.62,
+  maxRatio: 1.82,
+};
 
 const canvas = document.querySelector("#gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -189,15 +195,16 @@ const timeAttackDefinition = {
   label: "Time Attack",
   lives: 0,
   initialTime: 60,
+  maxTime: 180,
   timeRewards: {
-    perfect: 5,
-    good: 3,
+    perfect: 3,
+    good: 2,
     hit: 1,
     miss: -10,
   },
   segmentCounts: Array.from({ length: 25 }, (_, index) => index + 4),
   tuning: {
-    speedBase: 0.96,
+    speedBase: 2.88,
     speedStep: 0,
     speedCurve: 0,
     varianceBase: 0.2,
@@ -388,8 +395,10 @@ function createModeSignature(mode) {
     id: mode.id,
     lives: mode.lives,
     initialTime: mode.initialTime,
+    maxTime: mode.maxTime,
     extraLifeScoreStep: mode.extraLifeScoreStep,
     timeRewards: mode.timeRewards,
+    segmentBalance: SEGMENT_BALANCE,
     scoring: Object.fromEntries(
       Object.entries(feedbackTiers).map(([key, tier]) => [key, tier.score])
     ),
@@ -406,11 +415,12 @@ function createEndlessSignature(definition) {
       Object.entries(feedbackTiers).map(([key, tier]) => [key, tier.score])
     ),
     progression: {
-      version: 1,
+      version: 2,
       maxSegments: 36,
       primaryLevels: 40,
       extendedLevels: 120,
     },
+    segmentBalance: SEGMENT_BALANCE,
   }));
 }
 
@@ -533,7 +543,8 @@ function adjustTime(seconds) {
     return;
   }
 
-  state.timeRemaining = Math.max(0, state.timeRemaining + seconds);
+  const maxTime = currentRunDefinition().maxTime ?? Number.POSITIVE_INFINITY;
+  state.timeRemaining = Math.max(0, Math.min(maxTime, state.timeRemaining + seconds));
 }
 
 function timeRewardForFeedback(feedback) {
@@ -641,6 +652,16 @@ function hideNotice() {
   ui.notice.classList.add("is-hidden");
 }
 
+function balanceSegmentWeights(weights) {
+  const average = weights.reduce((sum, value) => sum + value, 0) / weights.length;
+
+  return weights.map((weight) => {
+    const normalized = 1 + ((weight / average) - 1) * SEGMENT_BALANCE.spread;
+    const clamped = Math.max(SEGMENT_BALANCE.minRatio, Math.min(SEGMENT_BALANCE.maxRatio, normalized));
+    return clamped;
+  });
+}
+
 function generateSegments(level) {
   const count = level.segments;
   const rankedSegments = Array.from({ length: count }, (_, index) => ({
@@ -669,11 +690,12 @@ function generateSegments(level) {
     return Math.max(0.025, weight);
   });
 
-  const totalWeight = rawWeights.reduce((sum, value) => sum + value, 0);
+  const balancedWeights = balanceSegmentWeights(rawWeights);
+  const totalWeight = balancedWeights.reduce((sum, value) => sum + value, 0);
   const guaranteedSpan = Math.min(TAU * 0.5, level.minSpan * count);
   const baseSpan = guaranteedSpan / count;
   const flexibleSpan = TAU - guaranteedSpan;
-  const spans = rawWeights.map((weight) => baseSpan + (weight / totalWeight) * flexibleSpan);
+  const spans = balancedWeights.map((weight) => baseSpan + (weight / totalWeight) * flexibleSpan);
   const spanTotal = spans.reduce((sum, span) => sum + span, 0);
   spans[spans.length - 1] += TAU - spanTotal;
   let cursor = 0;
