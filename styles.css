@@ -330,34 +330,64 @@ h1 {
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  padding: 5px;
-  border: 1px solid rgba(255, 207, 75, 0.32);
-  border-radius: 8px;
+  padding: 6px;
+  border: 1px solid rgba(255, 207, 75, 0.25);
+  border-radius: 10px;
   display: grid;
   gap: 4px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 42%),
-    rgba(9, 13, 20, 0.98);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(14px);
+    rgba(13, 18, 26, 0.96);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  
+  /* Transition properties */
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transition: opacity 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
 }
 
-.difficulty-menu[hidden] {
-  display: none;
+.difficulty-menu.is-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 .difficulty-choice {
-  min-height: 38px;
+  min-height: 40px;
+  padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 6px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   color: var(--text);
   font-size: 0.82rem;
   font-weight: 900;
   background: transparent;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.choice-label {
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
+}
+
+.choice-rank {
+  margin-left: auto;
+  padding-right: 6px;
+  color: var(--amber);
+  font-size: 0.72rem;
+  font-weight: 800;
+  opacity: 0.85;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.difficulty-choice:hover .choice-rank {
+  opacity: 1;
 }
 
 .difficulty-choice::after {
@@ -366,11 +396,13 @@ h1 {
   height: 7px;
   border-radius: 50%;
   background: transparent;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
 }
 
 .difficulty-choice:hover,
 .difficulty-choice:focus-visible {
-  border-color: rgba(148, 163, 184, 0.24);
+  border-color: rgba(255, 207, 75, 0.25);
   background: rgba(255, 255, 255, 0.065);
 }
 
@@ -378,6 +410,10 @@ h1 {
   color: var(--ink);
   border-color: rgba(255, 255, 255, 0.34);
   background: linear-gradient(180deg, #ffe27b, var(--amber));
+}
+
+.difficulty-choice.is-selected .choice-rank {
+  color: rgba(10, 13, 18, 0.75);
 }
 
 .difficulty-choice.is-selected::after {

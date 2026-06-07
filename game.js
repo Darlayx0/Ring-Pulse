@@ -1530,8 +1530,18 @@ function closeBonusWindow() {
 }
 
 function closeDifficultyMenu() {
-  ui.difficultyMenu.hidden = true;
+  if (!ui.difficultyMenu.classList.contains("is-open")) {
+    return;
+  }
+  ui.difficultyMenu.classList.remove("is-open");
   ui.difficultyButton.setAttribute("aria-expanded", "false");
+  
+  // Wait for the transition to finish before hiding the element
+  setTimeout(() => {
+    if (!ui.difficultyMenu.classList.contains("is-open")) {
+      ui.difficultyMenu.hidden = true;
+    }
+  }, 200);
 }
 
 function openDifficultyMenu() {
@@ -1540,16 +1550,18 @@ function openDifficultyMenu() {
   }
 
   ui.difficultyMenu.hidden = false;
+  // Trigger layout reflow to make the transition play
+  ui.difficultyMenu.offsetHeight;
+  ui.difficultyMenu.classList.add("is-open");
   ui.difficultyButton.setAttribute("aria-expanded", "true");
 }
 
 function toggleDifficultyMenu() {
-  if (ui.difficultyMenu.hidden) {
+  if (ui.difficultyMenu.hidden || !ui.difficultyMenu.classList.contains("is-open")) {
     openDifficultyMenu();
-    return;
+  } else {
+    closeDifficultyMenu();
   }
-
-  closeDifficultyMenu();
 }
 
 function selectDifficulty(difficulty) {
@@ -1751,9 +1763,33 @@ function updateUI() {
   });
 
   ui.difficultyChoices.forEach((button) => {
-    const isSelected = button.dataset.difficulty === state.difficulty;
+    const difficultyId = button.dataset.difficulty;
+    const isSelected = difficultyId === state.difficulty;
     button.classList.toggle("is-selected", isSelected);
     button.setAttribute("aria-selected", String(isSelected));
+
+    const labelSpan = button.querySelector(".choice-label");
+    const rankSpan = button.querySelector(".choice-rank");
+    if (labelSpan) {
+      labelSpan.textContent = difficultyId;
+    }
+    if (rankSpan) {
+      if (isStandardRun()) {
+        const mode = modeDefinitions[difficultyId];
+        if (mode) {
+          const records = loadRecordsForMode(mode);
+          if (records.highFinishPoints > 0) {
+            rankSpan.textContent = `Rank ${rankForFinishPoints(records.highFinishPoints)}`;
+          } else {
+            rankSpan.textContent = "Rank -";
+          }
+        } else {
+          rankSpan.textContent = "";
+        }
+      } else {
+        rankSpan.textContent = "";
+      }
+    }
   });
 
   ui.pauseButton.disabled = !(state.mode === "playing" || state.mode === "paused");
