@@ -276,23 +276,31 @@ const modeDefinitions = {
   },
 };
 
-const endlessDefinition = {
-  id: "endless",
-  label: "Endless",
-  lives: 5,
-  extraLifeScoreStep: 50000,
+const endlessDefinitions = {
+  normal: {
+    id: "endless",
+    label: "Endless normal",
+    lives: 5,
+    extraLifeScoreStep: 50000,
+  },
+  hardcore: {
+    id: "endless-hardcore",
+    label: "Endless hardcore",
+    lives: 1,
+    extraLifeScoreStep: 0,
+  },
 };
 
 const timeAttackDefinition = {
   id: "time-attack",
   label: "Time Attack",
   lives: 0,
-  initialTime: 60,
-  maxTime: 180,
+  initialTime: 30,
+  maxTime: 60,
   timeRewards: {
-    perfect: 3,
-    good: 2,
-    hit: 1,
+    perfect: 2,
+    good: 1,
+    hit: 0,
     miss: -10,
   },
   segmentCounts: Array.from({ length: 25 }, (_, index) => index + 4),
@@ -323,12 +331,15 @@ Object.values(modeDefinitions).forEach((mode) => {
 });
 timeAttackDefinition.levels = createLevels(timeAttackDefinition);
 timeAttackDefinition.signature = createModeSignature(timeAttackDefinition);
-endlessDefinition.signature = createEndlessSignature(endlessDefinition);
+Object.values(endlessDefinitions).forEach((mode) => {
+  mode.signature = createEndlessSignature(mode);
+});
 
 const state = {
   mode: "idle",
   runMode: "standard",
   difficulty: "normal",
+  endlessDifficulty: "normal",
   levelIndex: 0,
   activeLevel: null,
   angle: 0,
@@ -337,7 +348,7 @@ const state = {
   completedLevels: 0,
   score: 0,
   lives: 5,
-  timeRemaining: 60,
+  timeRemaining: 30,
   extraLifeMilestones: 0,
   combo: 0,
   maxCombo: 0,
@@ -414,14 +425,7 @@ function formatProgressPercent(value) {
 
 function formatDuration(value) {
   const totalSeconds = Math.max(0, Math.ceil(value));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  if (minutes > 0) {
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
-  }
-
-  return `${seconds}s`;
+  return `${totalSeconds}s`;
 }
 
 function seededUnit(seed) {
@@ -529,7 +533,7 @@ function createEndlessSignature(definition) {
 }
 
 function storageKey(definition, suffix) {
-  if (definition.id === endlessDefinition.id) {
+  if (definition.id === endlessDefinitions.normal.id) {
     return `${STORAGE_PREFIX}.endless.${suffix}`;
   }
 
@@ -590,7 +594,11 @@ function saveRecordsForMode(definition) {
 }
 
 function currentMode() {
-  return modeDefinitions[state.difficulty];
+  return modeDefinitions[state.difficulty] || modeDefinitions.normal;
+}
+
+function currentEndlessDefinition() {
+  return endlessDefinitions[state.endlessDifficulty] || endlessDefinitions.normal;
 }
 
 function isTimeAttackRun() {
@@ -607,7 +615,7 @@ function isStandardRun() {
 
 function currentRunDefinition() {
   if (isEndlessRun()) {
-    return endlessDefinition;
+    return currentEndlessDefinition();
   }
 
   if (isTimeAttackRun()) {
@@ -632,7 +640,7 @@ function resolveLevel(index = state.levelIndex) {
 
 function startNoticeKicker() {
   if (isEndlessRun()) {
-    return endlessDefinition.label;
+    return currentEndlessDefinition().label;
   }
 
   if (isTimeAttackRun()) {
@@ -733,9 +741,40 @@ function rankForFinishPoints(points) {
   return findScoringTier(standardFinishScoring.ranks, points).rank;
 }
 
+function rankSummaryForStandardDifficulty(difficulty) {
+  const mode = modeDefinitions[difficulty];
+  if (!mode) {
+    return "";
+  }
+
+  const records = isStandardRun() && difficulty === state.difficulty
+    ? { highFinishPoints: state.highFinishPoints }
+    : loadRecordsForMode(mode);
+
+  return records.highFinishPoints > 0
+    ? `Rank ${rankForFinishPoints(records.highFinishPoints)}`
+    : "Rank -";
+}
+
+function selectedDifficultyId() {
+  if (isEndlessRun()) {
+    return state.endlessDifficulty;
+  }
+
+  if (isTimeAttackRun()) {
+    return "time attack";
+  }
+
+  return state.difficulty;
+}
+
 function formatSelectedDifficultyRank() {
-  if (!isStandardRun()) {
-    return "Rank hanya Standard";
+  if (isEndlessRun()) {
+    return state.endlessDifficulty === "hardcore" ? "1 nyawa tetap" : "5 nyawa + bonus";
+  }
+
+  if (isTimeAttackRun()) {
+    return `${formatDuration(timeAttackDefinition.initialTime)} awal / max ${formatDuration(timeAttackDefinition.maxTime)}`;
   }
 
   if (state.highFinishPoints <= 0) {
@@ -743,6 +782,26 @@ function formatSelectedDifficultyRank() {
   }
 
   return `Rank ${rankForFinishPoints(state.highFinishPoints)} / ${formatScore(state.highFinishPoints)}`;
+}
+
+function difficultyChoicesForRun() {
+  if (isEndlessRun()) {
+    return Object.keys(endlessDefinitions).map((difficulty) => ({
+      id: difficulty,
+      label: difficulty,
+      meta: difficulty === "hardcore" ? "1 nyawa tetap" : "5 nyawa + bonus",
+    }));
+  }
+
+  if (isTimeAttackRun()) {
+    return [];
+  }
+
+  return Object.keys(modeDefinitions).map((difficulty) => ({
+    id: difficulty,
+    label: difficulty,
+    meta: rankSummaryForStandardDifficulty(difficulty),
+  }));
 }
 
 function findPenaltyTier(value) {
@@ -1420,7 +1479,17 @@ function resetCurrentRun() {
 }
 
 function setDifficulty(difficulty) {
-  if (!modeDefinitions[difficulty] || state.difficulty === difficulty) {
+  if (isEndlessRun()) {
+    if (!endlessDefinitions[difficulty] || state.endlessDifficulty === difficulty) {
+      return;
+    }
+
+    state.endlessDifficulty = difficulty;
+    resetCurrentRun();
+    return;
+  }
+
+  if (!isStandardRun() || !modeDefinitions[difficulty] || state.difficulty === difficulty) {
     return;
   }
 
@@ -1472,12 +1541,14 @@ function resetAllGameProgress() {
       highPerfectHits: 0,
     });
   });
-  saveRecordValuesForMode(endlessDefinition, {
-    best: 0,
-    highLevel: 0,
-    highFinishPoints: 0,
-    highPerfectPercent: 0,
-    highPerfectHits: 0,
+  Object.values(endlessDefinitions).forEach((mode) => {
+    saveRecordValuesForMode(mode, {
+      best: 0,
+      highLevel: 0,
+      highFinishPoints: 0,
+      highPerfectPercent: 0,
+      highPerfectHits: 0,
+    });
   });
   saveRecordValuesForMode(timeAttackDefinition, {
     best: 0,
@@ -1534,9 +1605,9 @@ function closeDifficultyMenu() {
     return;
   }
   ui.difficultyMenu.classList.remove("is-open");
+  ui.difficultyPanel.classList.remove("is-menu-open");
   ui.difficultyButton.setAttribute("aria-expanded", "false");
-  
-  // Wait for the transition to finish before hiding the element
+
   setTimeout(() => {
     if (!ui.difficultyMenu.classList.contains("is-open")) {
       ui.difficultyMenu.hidden = true;
@@ -1545,14 +1616,15 @@ function closeDifficultyMenu() {
 }
 
 function openDifficultyMenu() {
-  if (!isStandardRun()) {
+  if (isTimeAttackRun()) {
     return;
   }
 
+  renderDifficultyChoices();
   ui.difficultyMenu.hidden = false;
-  // Trigger layout reflow to make the transition play
   ui.difficultyMenu.offsetHeight;
   ui.difficultyMenu.classList.add("is-open");
+  ui.difficultyPanel.classList.add("is-menu-open");
   ui.difficultyButton.setAttribute("aria-expanded", "true");
 }
 
@@ -1686,6 +1758,41 @@ function setMeterValue(fillElement, value) {
   fillElement.parentElement?.classList.toggle("is-empty", clamped <= 0);
 }
 
+function renderDifficultyChoices() {
+  const choices = difficultyChoicesForRun();
+  const selected = selectedDifficultyId();
+
+  ui.difficultyMenu.setAttribute(
+    "aria-label",
+    isEndlessRun() ? "Kesulitan Endless" : "Tingkat kesulitan Standard"
+  );
+
+  ui.difficultyChoices.forEach((button, index) => {
+    const choice = choices[index];
+    if (!choice) {
+      button.hidden = true;
+      button.classList.remove("is-selected");
+      button.removeAttribute("aria-selected");
+      return;
+    }
+
+    button.hidden = false;
+    button.dataset.difficulty = choice.id;
+    const isSelected = choice.id === selected;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-selected", String(isSelected));
+
+    const labelSpan = button.querySelector(".choice-label");
+    const rankSpan = button.querySelector(".choice-rank");
+    if (labelSpan) {
+      labelSpan.textContent = choice.label;
+    }
+    if (rankSpan) {
+      rankSpan.textContent = choice.meta;
+    }
+  });
+}
+
 function updateUI() {
   const level = currentLevel();
   const runDefinition = currentRunDefinition();
@@ -1728,13 +1835,14 @@ function updateUI() {
   ui.sessionMode.textContent = currentRunLabel();
   ui.resetMode.textContent = currentRunLabel();
   ui.difficultyPanel.hidden = false;
-  ui.difficultyPanel.classList.toggle("is-locked", endless || timed);
-  ui.difficultyPanel.setAttribute("aria-disabled", String(endless || timed));
-  ui.difficultyPanel.title = endless || timed ? "Kesulitan hanya aktif untuk mode Standard" : "";
-  ui.difficultyButton.disabled = endless || timed;
-  ui.difficultyCurrentValue.textContent = state.difficulty;
+  ui.difficultyPanel.classList.toggle("is-locked", timed);
+  ui.difficultyPanel.setAttribute("aria-disabled", String(timed));
+  ui.difficultyPanel.title = timed ? "Kesulitan tidak berlaku untuk mode Time Attack" : "";
+  ui.difficultyButton.disabled = timed;
+  ui.difficultyCurrentValue.textContent = selectedDifficultyId();
   ui.difficultyRankValue.textContent = formatSelectedDifficultyRank();
-  if (endless || timed) {
+  renderDifficultyChoices();
+  if (timed) {
     closeDifficultyMenu();
   }
   ui.openBonusButton.disabled = !isStandardRun();
@@ -1760,36 +1868,6 @@ function updateUI() {
     const isActive = button.dataset.runMode === state.runMode;
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", String(isActive));
-  });
-
-  ui.difficultyChoices.forEach((button) => {
-    const difficultyId = button.dataset.difficulty;
-    const isSelected = difficultyId === state.difficulty;
-    button.classList.toggle("is-selected", isSelected);
-    button.setAttribute("aria-selected", String(isSelected));
-
-    const labelSpan = button.querySelector(".choice-label");
-    const rankSpan = button.querySelector(".choice-rank");
-    if (labelSpan) {
-      labelSpan.textContent = difficultyId;
-    }
-    if (rankSpan) {
-      if (isStandardRun()) {
-        const mode = modeDefinitions[difficultyId];
-        if (mode) {
-          const records = loadRecordsForMode(mode);
-          if (records.highFinishPoints > 0) {
-            rankSpan.textContent = `Rank ${rankForFinishPoints(records.highFinishPoints)}`;
-          } else {
-            rankSpan.textContent = "Rank -";
-          }
-        } else {
-          rankSpan.textContent = "";
-        }
-      } else {
-        rankSpan.textContent = "";
-      }
-    }
   });
 
   ui.pauseButton.disabled = !(state.mode === "playing" || state.mode === "paused");
