@@ -57,7 +57,7 @@ const ui = {
   rankBonusTable: document.querySelector("#rankBonusTable"),
   perfectBonusTable: document.querySelector("#perfectBonusTable"),
   comboBonusTable: document.querySelector("#comboBonusTable"),
-  rotationBonusTable: document.querySelector("#rotationBonusTable"),
+  penaltyBonusTable: document.querySelector("#penaltyBonusTable"),
   disciplineBonusTable: document.querySelector("#disciplineBonusTable"),
   difficultyPanel: document.querySelector("#difficultyPanel"),
   runModeOptions: Array.from(document.querySelectorAll(".mode-option")),
@@ -97,44 +97,45 @@ const feedbackTiers = {
 };
 
 const standardFinishScoring = {
-  basePoints: 800,
+  basePoints: 1000,
   perfectTiers: [
-    { min: 100, points: 3300, label: "100% Perfect" },
-    { min: 97, points: 2900, label: "97%+ Perfect" },
-    { min: 94, points: 2500, label: "94%+ Perfect" },
-    { min: 90, points: 2100, label: "90%+ Perfect" },
-    { min: 85, points: 1700, label: "85%+ Perfect" },
-    { min: 80, points: 1300, label: "80%+ Perfect" },
-    { min: 70, points: 900, label: "70%+ Perfect" },
-    { min: 60, points: 550, label: "60%+ Perfect" },
-    { min: 0, points: 200, label: "<60% Perfect" },
+    { min: 100, points: 3600, label: "100% Perfect" },
+    { min: 97, points: 3200, label: "97%+ Perfect" },
+    { min: 94, points: 2800, label: "94%+ Perfect" },
+    { min: 90, points: 2400, label: "90%+ Perfect" },
+    { min: 85, points: 1900, label: "85%+ Perfect" },
+    { min: 80, points: 1500, label: "80%+ Perfect" },
+    { min: 70, points: 1000, label: "70%+ Perfect" },
+    { min: 60, points: 600, label: "60%+ Perfect" },
+    { min: 0, points: 250, label: "<60% Perfect" },
   ],
   comboTiers: [
-    { min: 95, points: 2400, label: "95%+ Max Combo" },
-    { min: 85, points: 2050, label: "85%+ Max Combo" },
-    { min: 75, points: 1700, label: "75%+ Max Combo" },
-    { min: 60, points: 1250, label: "60%+ Max Combo" },
-    { min: 45, points: 850, label: "45%+ Max Combo" },
-    { min: 30, points: 500, label: "30%+ Max Combo" },
-    { min: 0, points: 200, label: "<30% Max Combo" },
+    { min: 95, points: 2600, label: "95%+ Max Combo" },
+    { min: 85, points: 2200, label: "85%+ Max Combo" },
+    { min: 75, points: 1800, label: "75%+ Max Combo" },
+    { min: 60, points: 1300, label: "60%+ Max Combo" },
+    { min: 45, points: 900, label: "45%+ Max Combo" },
+    { min: 30, points: 550, label: "30%+ Max Combo" },
+    { min: 0, points: 250, label: "<30% Max Combo" },
   ],
-  emptyRotationTiers: [
-    { max: 0, points: 1200, label: "0 putaran kosong" },
-    { max: 1, points: 900, label: "1 putaran kosong" },
-    { max: 2, points: 650, label: "2 putaran kosong" },
-    { max: 3, points: 400, label: "3 putaran kosong" },
-    { max: 5, points: 200, label: "4-5 putaran kosong" },
-    { max: Number.POSITIVE_INFINITY, points: 0, label: "6+ putaran kosong" },
+  penaltyTiers: [
+    { max: 2, points: 1500, label: "0-2x streak penalti" },
+    { max: 3, points: 1200, label: "3x streak penalti" },
+    { max: 4, points: 900, label: "4x streak penalti" },
+    { max: 5, points: 650, label: "5x streak penalti" },
+    { max: 6, points: 400, label: "6x streak penalti" },
+    { max: 7, points: 200, label: "7x streak penalti" },
+    { max: Number.POSITIVE_INFINITY, points: 0, label: "8x+ streak penalti" },
   ],
-  noMissPoints: 1400,
+  noMissPoints: 1300,
   ranks: [
-    { rank: "S+", min: 9000 },
-    { rank: "S", min: 8500 },
-    { rank: "A+", min: 7600 },
-    { rank: "A", min: 6400 },
-    { rank: "B+", min: 5200 },
-    { rank: "B", min: 4000 },
-    { rank: "C", min: 2500 },
+    { rank: "S+", min: 9400 },
+    { rank: "S", min: 8800 },
+    { rank: "A+", min: 8000 },
+    { rank: "A", min: 6900 },
+    { rank: "B+", min: 5700 },
+    { rank: "B", min: 4500 },
+    { rank: "C", min: 3000 },
     { rank: "D", min: 0 },
   ],
 };
@@ -340,9 +341,8 @@ const state = {
   misses: 0,
   hits: 0,
   perfectHits: 0,
-  completedRotations: 0,
-  emptyRotations: 0,
-  currentRotationHit: false,
+  currentPenaltyStreak: 0,
+  maxPenaltyStreak: 0,
   finishResult: null,
   best: 0,
   highLevel: 0,
@@ -353,7 +353,6 @@ const state = {
   dpr: 1,
   flash: null,
   shake: 0,
-  floaters: [],
   transitionTimer: 0,
   currentSegmentIndex: -1,
   currentSegment: null,
@@ -720,9 +719,9 @@ function findScoringTier(tiers, value) {
   return tiers.find((tier) => value >= tier.min) || tiers[tiers.length - 1];
 }
 
-function findEmptyRotationTier(value) {
-  return standardFinishScoring.emptyRotationTiers.find((tier) => value <= tier.max)
-    || standardFinishScoring.emptyRotationTiers[standardFinishScoring.emptyRotationTiers.length - 1];
+function findPenaltyTier(value) {
+  return standardFinishScoring.penaltyTiers.find((tier) => value <= tier.max)
+    || standardFinishScoring.penaltyTiers[standardFinishScoring.penaltyTiers.length - 1];
 }
 
 function maxFinishBonusPoints() {
@@ -730,19 +729,19 @@ function maxFinishBonusPoints() {
     + standardFinishScoring.perfectTiers[0].points
     + standardFinishScoring.comboTiers[0].points
     + standardFinishScoring.noMissPoints
-    + standardFinishScoring.emptyRotationTiers[0].points;
+    + standardFinishScoring.penaltyTiers[0].points;
 }
 
 function formatMinTarget(value, suffix = "") {
   return value === 0 ? "Semua run" : `${value}${suffix}+`;
 }
 
-function formatRotationTarget(tier) {
+function formatPenaltyTarget(tier) {
   if (!Number.isFinite(tier.max)) {
-    return "6+ putaran kosong";
+    return "8x+ streak penalti";
   }
 
-  return tier.max === 0 ? "0 putaran kosong" : `Maks ${tier.max} putaran kosong`;
+  return tier.max === 2 ? "Maks 0-2x streak penalti" : `Maks ${tier.max}x streak penalti`;
 }
 
 function calculateStandardFinishResult() {
@@ -751,14 +750,13 @@ function calculateStandardFinishResult() {
   const comboPercent = totalSegments === 0 ? 0 : Math.round((state.maxCombo / totalSegments) * 100);
   const perfectTier = findScoringTier(standardFinishScoring.perfectTiers, perfectPercent);
   const comboTier = findScoringTier(standardFinishScoring.comboTiers, comboPercent);
-  const emptyRotationTier = findEmptyRotationTier(state.emptyRotations);
+  const penaltyTier = findPenaltyTier(state.maxPenaltyStreak);
   const noMiss = state.misses === 0;
-  const allRotationsHit = state.emptyRotations === 0;
   const points = standardFinishScoring.basePoints
     + perfectTier.points
     + comboTier.points
     + (noMiss ? standardFinishScoring.noMissPoints : 0)
-    + emptyRotationTier.points;
+    + penaltyTier.points;
   const rankTier = findScoringTier(standardFinishScoring.ranks, points);
 
   return {
@@ -768,51 +766,22 @@ function calculateStandardFinishResult() {
     maxCombo: state.maxCombo,
     comboPercent,
     noMiss,
-    allRotationsHit,
-    completedRotations: state.completedRotations,
-    emptyRotations: state.emptyRotations,
+    maxPenaltyStreak: state.maxPenaltyStreak,
     perfectTier,
     comboTier,
-    emptyRotationTier,
+    penaltyTier,
   };
 }
 
 function formatFinishDetail(result) {
   const cleanText = result.noMiss ? "Tanpa miss" : `${state.misses} miss`;
-  const tempoText = `${result.emptyRotationTier.label} (+${formatScore(result.emptyRotationTier.points)})`;
-  return `Bonus +${formatScore(result.points)} - Kombo ${result.comboPercent}% - ${cleanText} - ${tempoText}`;
+  const penaltyText = `Penalti ${result.maxPenaltyStreak}x (+${formatScore(result.penaltyTier.points)})`;
+  return `Bonus +${formatScore(result.points)} - Kombo ${result.comboPercent}% - ${cleanText} - ${penaltyText}`;
 }
 
 function formatFailDetail() {
   const levelText = isEndlessRun() ? `Level ${state.levelIndex + 1}` : `${state.completedLevels}/${currentRunDefinition().levels.length} level`;
-  return `Skor ${formatScore(state.score)} - Progres ${levelText} - Perfect ${currentPerfectPercent()}% - ${state.misses} miss - ${state.emptyRotations} putaran kosong`;
-}
-
-function addRotationFloater() {
-  state.floaters.push({
-    label: "Putaran kosong",
-    detail: `${state.emptyRotations}x tanpa hit`,
-    life: 1.12,
-    maxLife: 1.12,
-    angle: normalizeAngle(state.angle + Math.PI * 0.08),
-  });
-
-  if (state.floaters.length > 4) {
-    state.floaters.shift();
-  }
-}
-
-function trackCompletedRotation(previousAngle, nextAngle) {
-  if (nextAngle >= previousAngle) {
-    return;
-  }
-
-  state.completedRotations += 1;
-  if (!state.currentRotationHit) {
-    state.emptyRotations += 1;
-    addRotationFloater();
-  }
-  state.currentRotationHit = false;
+  return `Skor ${formatScore(state.score)} - Progres ${levelText} - Perfect ${currentPerfectPercent()}% - ${state.misses} miss - Penalti max ${state.maxPenaltyStreak}x`;
 }
 
 function renderBonusRows(container, rows) {
@@ -834,7 +803,7 @@ function renderBonusRows(container, rows) {
 
 function renderBonusTransparency() {
   ui.bonusMax.textContent = `Max ${formatScore(maxFinishBonusPoints())}`;
-  ui.bonusFormula.textContent = `Base ${formatScore(standardFinishScoring.basePoints)} + % Sempurna + Max Kombo + Tanpa Miss + Putaran Tanpa Hit`;
+  ui.bonusFormula.textContent = `Base ${formatScore(standardFinishScoring.basePoints)} + % Sempurna + Max Kombo + Tanpa Miss + Minimisasi Penalti`;
 
   renderBonusRows(
     ui.rankBonusTable,
@@ -858,9 +827,9 @@ function renderBonusTransparency() {
     }))
   );
   renderBonusRows(
-    ui.rotationBonusTable,
-    standardFinishScoring.emptyRotationTiers.map((tier) => ({
-      label: formatRotationTarget(tier),
+    ui.penaltyBonusTable,
+    standardFinishScoring.penaltyTiers.map((tier) => ({
+      label: formatPenaltyTarget(tier),
       value: `+${formatScore(tier.points)}`,
     }))
   );
@@ -931,6 +900,7 @@ function renderNoticeResult(result) {
     ["Bonus", `+${formatScore(result.points)}`],
     ["Perfect", `${result.perfectPercent}%`],
     ["Kombo", `${result.comboPercent}%`],
+    ["Penalti", `${result.maxPenaltyStreak}x / +${formatScore(result.penaltyTier.points)}`],
     ["Disiplin", result.noMiss ? "Tanpa Miss" : `${state.misses} Miss`],
   ].forEach(([label, value]) => {
     const item = document.createElement("span");
@@ -1035,11 +1005,9 @@ function loadLevel(index) {
   state.activeLevel = resolveLevel(index);
   state.segments = generateSegments(state.activeLevel);
   state.currentHits = 0;
-  state.currentRotationHit = false;
   state.angle = normalizeAngle(degreesToRadians(11 + index * 13));
   state.flash = null;
   state.shake = 0;
-  state.floaters = [];
   state.currentSegmentIndex = -1;
   state.currentSegment = null;
   state.timeDisplayCache = "";
@@ -1062,9 +1030,8 @@ function startGame() {
   state.misses = 0;
   state.hits = 0;
   state.perfectHits = 0;
-  state.completedRotations = 0;
-  state.emptyRotations = 0;
-  state.currentRotationHit = false;
+  state.currentPenaltyStreak = 0;
+  state.maxPenaltyStreak = 0;
   state.finishResult = null;
   loadLevel(0);
   hideNotice();
@@ -1222,6 +1189,20 @@ function feedbackKind(feedback) {
   return "safe";
 }
 
+function increasePenaltyStreak() {
+  state.currentPenaltyStreak += 1;
+  state.maxPenaltyStreak = Math.max(state.maxPenaltyStreak, state.currentPenaltyStreak);
+}
+
+function updatePenaltyStreakForFeedback(feedback) {
+  if (feedback === feedbackTiers.hit) {
+    increasePenaltyStreak();
+    return;
+  }
+
+  state.currentPenaltyStreak = 0;
+}
+
 function flashDuration(kind) {
   return {
     perfect: 0.74,
@@ -1255,6 +1236,7 @@ function createHitFlash(feedback, segment, points, timeReward) {
   const kind = feedbackKind(feedback);
   const duration = flashDuration(kind);
   const particleCount = kind === "perfect" ? 22 : kind === "good" ? 13 : 8;
+  const penaltyText = kind === "safe" ? `Streak penalti ${state.currentPenaltyStreak}x` : "";
 
   return {
     kind,
@@ -1262,11 +1244,11 @@ function createHitFlash(feedback, segment, points, timeReward) {
     maxLife: duration,
     label: feedback.label,
     scoreLabel: `+${formatScore(points)} poin`,
-    detailLabel: isTimeAttackRun()
+    detailLabel: penaltyText || (isTimeAttackRun()
       ? `+${timeReward}s waktu`
       : state.combo > 0
         ? `${state.combo} kombo`
-        : "Aman",
+        : "Aman"),
     color: feedback.color,
     segmentIndex: segment.index,
     particles: createFlashParticles(kind, segment, particleCount),
@@ -1281,7 +1263,7 @@ function createMissFlash() {
     maxLife: duration,
     label: "Miss",
     scoreLabel: isTimeAttackRun() ? "-10s waktu" : "0 poin",
-    detailLabel: isTimeAttackRun() ? "Timer terkena penalti" : `${state.misses} miss`,
+    detailLabel: `Streak penalti ${state.currentPenaltyStreak}x`,
     color: "#ff5b57",
     segmentIndex: state.currentSegmentIndex,
     particles: createFlashParticles("miss", state.currentSegment, 7),
@@ -1310,7 +1292,7 @@ function handleHit() {
     }
     state.combo = feedback === feedbackTiers.hit ? 0 : state.combo + 1;
     state.maxCombo = Math.max(state.maxCombo, state.combo);
-    state.currentRotationHit = true;
+    updatePenaltyStreakForFeedback(feedback);
     adjustTime(timeReward);
     const hitPoints = feedback.score + sizeBonus + state.combo * 13 + state.levelIndex * 9;
     addScore(hitPoints);
@@ -1333,6 +1315,7 @@ function handleHit() {
     }
     state.misses += 1;
     state.combo = 0;
+    increasePenaltyStreak();
     state.flash = createMissFlash();
     state.shake = 0.28;
     playTone("miss");
@@ -1390,9 +1373,8 @@ function resetCurrentRun() {
   state.misses = 0;
   state.hits = 0;
   state.perfectHits = 0;
-  state.completedRotations = 0;
-  state.emptyRotations = 0;
-  state.currentRotationHit = false;
+  state.currentPenaltyStreak = 0;
+  state.maxPenaltyStreak = 0;
   state.finishResult = null;
   const records = loadRecordsForMode(currentRunDefinition());
   state.best = records.best;
@@ -1747,7 +1729,6 @@ function draw(timestamp = 0) {
   drawHub(center, radius, flashRatio);
   drawCenterLabel(center, radius);
   drawFlash(center, radius, flashRatio);
-  drawFloaters(center, radius);
 
   ctx.restore();
 }
@@ -2164,52 +2145,12 @@ function drawFlash(center, radius, flashRatio) {
   ctx.restore();
 }
 
-function drawFloaters(center, radius) {
-  if (state.floaters.length === 0) {
-    return;
-  }
-
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  state.floaters.forEach((floater, index) => {
-    const progress = 1 - floater.life / floater.maxLife;
-    const alpha = Math.max(0, 1 - progress);
-    const lift = radius * (0.08 + progress * 0.18 + index * 0.035);
-    const distance = radius * (0.48 + progress * 0.08);
-    const x = xFromAngle(center, floater.angle, distance);
-    const y = yFromAngle(center, floater.angle, distance) - lift;
-    const wobble = Math.sin(progress * Math.PI) * radius * 0.035;
-
-    ctx.fillStyle = `rgba(7, 10, 15, ${alpha * 0.62})`;
-    drawRoundedRect(x - radius * 0.27 + wobble, y - radius * 0.082, radius * 0.54, radius * 0.155, radius * 0.045);
-    ctx.fill();
-
-    ctx.strokeStyle = `rgba(255, 207, 75, ${alpha * 0.28})`;
-    ctx.lineWidth = Math.max(1, state.viewSize * 0.0018);
-    ctx.stroke();
-
-    ctx.fillStyle = `rgba(255, 207, 75, ${alpha})`;
-    ctx.font = `900 ${Math.max(12, radius * 0.045)}px Inter, sans-serif`;
-    ctx.fillText(floater.label, x + wobble, y - radius * 0.024);
-
-    ctx.fillStyle = `rgba(155, 167, 184, ${alpha * 0.9})`;
-    ctx.font = `800 ${Math.max(10, radius * 0.034)}px Inter, sans-serif`;
-    ctx.fillText(floater.detail, x + wobble, y + radius * 0.034);
-  });
-
-  ctx.restore();
-}
-
 function tick(timestamp) {
   const delta = state.lastTime ? Math.min((timestamp - state.lastTime) / 1000, 0.04) : 0;
   state.lastTime = timestamp;
 
   if (state.mode === "playing") {
-    const previousAngle = state.angle;
     state.angle = normalizeAngle(state.angle + currentLevel().speed * delta);
-    trackCompletedRotation(previousAngle, state.angle);
     if (isTimeAttackRun()) {
       state.timeRemaining = Math.max(0, state.timeRemaining - delta);
       renderLives();
@@ -2230,13 +2171,6 @@ function tick(timestamp) {
 
   if (state.shake > 0) {
     state.shake = Math.max(0, state.shake - delta);
-  }
-
-  if (state.floaters.length > 0) {
-    state.floaters.forEach((floater) => {
-      floater.life -= delta;
-    });
-    state.floaters = state.floaters.filter((floater) => floater.life > 0);
   }
 
   syncCurrentSegmentIndicator();
