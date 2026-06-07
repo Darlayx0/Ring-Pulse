@@ -48,14 +48,26 @@
         </div>
 
         <div class="difficulty-panel difficulty-hud" id="difficultyPanel" aria-label="Pilihan kesulitan">
-          <label class="difficulty-caption" for="difficultySelect">Kesulitan</label>
-          <div class="difficulty-select-wrap">
-            <select class="difficulty-select" id="difficultySelect" aria-label="Tingkat kesulitan standar">
-              <option value="easy">easy</option>
-              <option value="normal" selected>normal</option>
-              <option value="hard">hard</option>
-              <option value="extreme">extreme</option>
-            </select>
+          <span class="difficulty-caption" id="difficultyCaption">Kesulitan</span>
+          <div class="difficulty-picker" id="difficultyPicker">
+            <button
+              class="difficulty-button"
+              id="difficultyButton"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="difficultyMenu"
+              aria-labelledby="difficultyCaption difficultyCurrentValue"
+            >
+              <span id="difficultyCurrentValue">normal</span>
+              <em id="difficultyRankValue">Rank -</em>
+            </button>
+            <div class="difficulty-menu" id="difficultyMenu" role="listbox" aria-label="Tingkat kesulitan standar" hidden>
+              <button class="difficulty-choice" type="button" role="option" data-difficulty="easy">easy</button>
+              <button class="difficulty-choice is-selected" type="button" role="option" data-difficulty="normal" aria-selected="true">normal</button>
+              <button class="difficulty-choice" type="button" role="option" data-difficulty="hard">hard</button>
+              <button class="difficulty-choice" type="button" role="option" data-difficulty="extreme">extreme</button>
+            </div>
           </div>
         </div>
       </header>

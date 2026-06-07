@@ -61,7 +61,11 @@ const ui = {
   disciplineBonusTable: document.querySelector("#disciplineBonusTable"),
   difficultyPanel: document.querySelector("#difficultyPanel"),
   runModeOptions: Array.from(document.querySelectorAll(".mode-option")),
-  difficultySelect: document.querySelector("#difficultySelect"),
+  difficultyButton: document.querySelector("#difficultyButton"),
+  difficultyCurrentValue: document.querySelector("#difficultyCurrentValue"),
+  difficultyRankValue: document.querySelector("#difficultyRankValue"),
+  difficultyMenu: document.querySelector("#difficultyMenu"),
+  difficultyChoices: Array.from(document.querySelectorAll(".difficulty-choice")),
   resetButtons: Array.from(document.querySelectorAll(".reset-button")),
   resetHighPerfectButton: document.querySelector("#resetHighPerfectButton"),
 };
@@ -346,6 +350,7 @@ const state = {
   finishResult: null,
   best: 0,
   highLevel: 0,
+  highFinishPoints: 0,
   highPerfectPercent: 0,
   highPerfectHits: 0,
   lastTime: 0,
@@ -536,25 +541,28 @@ function loadRecordsForMode(definition) {
     const signatureKey = storageKey(definition, "signature");
     const bestKey = storageKey(definition, "best");
     const highLevelKey = storageKey(definition, "highLevel");
+    const highFinishKey = storageKey(definition, "highFinish");
     const highPerfectKey = storageKey(definition, "highPerfect");
     const highPerfectHitsKey = storageKey(definition, "highPerfectHits");
     if (localStorage.getItem(signatureKey) !== definition.signature) {
       localStorage.setItem(signatureKey, definition.signature);
       localStorage.removeItem(bestKey);
       localStorage.removeItem(highLevelKey);
+      localStorage.removeItem(highFinishKey);
       localStorage.removeItem(highPerfectKey);
       localStorage.removeItem(highPerfectHitsKey);
-      return { best: 0, highLevel: 0, highPerfectPercent: 0, highPerfectHits: 0 };
+      return { best: 0, highLevel: 0, highFinishPoints: 0, highPerfectPercent: 0, highPerfectHits: 0 };
     }
     const highLevelCap = definition.levels?.length ?? Number.POSITIVE_INFINITY;
     return {
       best: Number(localStorage.getItem(bestKey) || 0),
       highLevel: Math.min(highLevelCap, Number(localStorage.getItem(highLevelKey) || 0)),
+      highFinishPoints: Number(localStorage.getItem(highFinishKey) || 0),
       highPerfectPercent: Math.min(100, Number(localStorage.getItem(highPerfectKey) || 0)),
       highPerfectHits: Number(localStorage.getItem(highPerfectHitsKey) || 0),
     };
   } catch {
-    return { best: 0, highLevel: 0, highPerfectPercent: 0, highPerfectHits: 0 };
+    return { best: 0, highLevel: 0, highFinishPoints: 0, highPerfectPercent: 0, highPerfectHits: 0 };
   }
 }
 
@@ -563,6 +571,7 @@ function saveRecordValuesForMode(definition, records) {
     localStorage.setItem(storageKey(definition, "signature"), definition.signature);
     localStorage.setItem(storageKey(definition, "best"), String(records.best));
     localStorage.setItem(storageKey(definition, "highLevel"), String(records.highLevel));
+    localStorage.setItem(storageKey(definition, "highFinish"), String(records.highFinishPoints || 0));
     localStorage.setItem(storageKey(definition, "highPerfect"), String(records.highPerfectPercent));
     localStorage.setItem(storageKey(definition, "highPerfectHits"), String(records.highPerfectHits || 0));
   } catch {
@@ -574,6 +583,7 @@ function saveRecordsForMode(definition) {
   saveRecordValuesForMode(definition, {
     best: state.best,
     highLevel: state.highLevel,
+    highFinishPoints: state.highFinishPoints,
     highPerfectPercent: state.highPerfectPercent,
     highPerfectHits: state.highPerfectHits,
   });
@@ -717,6 +727,22 @@ function currentPerfectPercent() {
 
 function findScoringTier(tiers, value) {
   return tiers.find((tier) => value >= tier.min) || tiers[tiers.length - 1];
+}
+
+function rankForFinishPoints(points) {
+  return findScoringTier(standardFinishScoring.ranks, points).rank;
+}
+
+function formatSelectedDifficultyRank() {
+  if (!isStandardRun()) {
+    return "Rank hanya Standard";
+  }
+
+  if (state.highFinishPoints <= 0) {
+    return "Rank -";
+  }
+
+  return `Rank ${rankForFinishPoints(state.highFinishPoints)} / ${formatScore(state.highFinishPoints)}`;
 }
 
 function findPenaltyTier(value) {
@@ -1129,6 +1155,11 @@ function updateRecords() {
       state.highPerfectPercent = perfectPercent;
       changed = true;
     }
+
+    if (isStandardRun() && state.finishResult && state.finishResult.points > state.highFinishPoints) {
+      state.highFinishPoints = state.finishResult.points;
+      changed = true;
+    }
   }
 
   if (isEndlessRun() && state.perfectHits > state.highPerfectHits) {
@@ -1379,6 +1410,7 @@ function resetCurrentRun() {
   const records = loadRecordsForMode(currentRunDefinition());
   state.best = records.best;
   state.highLevel = records.highLevel;
+  state.highFinishPoints = records.highFinishPoints;
   state.highPerfectPercent = records.highPerfectPercent;
   state.highPerfectHits = records.highPerfectHits;
   setupLevelGrid();
@@ -1402,6 +1434,7 @@ function setRunMode(runMode) {
   }
 
   state.runMode = runMode;
+  closeDifficultyMenu();
   resetCurrentRun();
 }
 
@@ -1414,6 +1447,10 @@ function resetRecordValuesForMode(mode, scope) {
 
   if (scope === "high-level" || scope === "mode") {
     nextRecords.highLevel = 0;
+  }
+
+  if (scope === "high-score" || scope === "mode") {
+    nextRecords.highFinishPoints = 0;
   }
 
   if (scope === "high-perfect" || scope === "mode") {
@@ -1430,6 +1467,7 @@ function resetAllGameProgress() {
     saveRecordValuesForMode(mode, {
       best: 0,
       highLevel: 0,
+      highFinishPoints: 0,
       highPerfectPercent: 0,
       highPerfectHits: 0,
     });
@@ -1437,12 +1475,14 @@ function resetAllGameProgress() {
   saveRecordValuesForMode(endlessDefinition, {
     best: 0,
     highLevel: 0,
+    highFinishPoints: 0,
     highPerfectPercent: 0,
     highPerfectHits: 0,
   });
   saveRecordValuesForMode(timeAttackDefinition, {
     best: 0,
     highLevel: 0,
+    highFinishPoints: 0,
     highPerfectPercent: 0,
     highPerfectHits: 0,
   });
@@ -1467,6 +1507,10 @@ function closeResetWindow() {
 }
 
 function openBonusWindow() {
+  if (!isStandardRun()) {
+    return;
+  }
+
   renderBonusTransparency();
   if (typeof ui.bonusDialog.showModal === "function") {
     ui.bonusDialog.showModal();
@@ -1483,6 +1527,34 @@ function closeBonusWindow() {
   }
 
   ui.bonusDialog.removeAttribute("open");
+}
+
+function closeDifficultyMenu() {
+  ui.difficultyMenu.hidden = true;
+  ui.difficultyButton.setAttribute("aria-expanded", "false");
+}
+
+function openDifficultyMenu() {
+  if (!isStandardRun()) {
+    return;
+  }
+
+  ui.difficultyMenu.hidden = false;
+  ui.difficultyButton.setAttribute("aria-expanded", "true");
+}
+
+function toggleDifficultyMenu() {
+  if (ui.difficultyMenu.hidden) {
+    openDifficultyMenu();
+    return;
+  }
+
+  closeDifficultyMenu();
+}
+
+function selectDifficulty(difficulty) {
+  closeDifficultyMenu();
+  setDifficulty(difficulty);
 }
 
 function resetProgress(scope) {
@@ -1647,6 +1719,14 @@ function updateUI() {
   ui.difficultyPanel.classList.toggle("is-locked", endless || timed);
   ui.difficultyPanel.setAttribute("aria-disabled", String(endless || timed));
   ui.difficultyPanel.title = endless || timed ? "Kesulitan hanya aktif untuk mode Standard" : "";
+  ui.difficultyButton.disabled = endless || timed;
+  ui.difficultyCurrentValue.textContent = state.difficulty;
+  ui.difficultyRankValue.textContent = formatSelectedDifficultyRank();
+  if (endless || timed) {
+    closeDifficultyMenu();
+  }
+  ui.openBonusButton.disabled = !isStandardRun();
+  ui.openBonusButton.title = isStandardRun() ? "" : "Bonus selesai hanya berlaku untuk mode Standard";
   ui.progressRunHeader.hidden = endless;
   ui.progressRunMeter.hidden = endless;
   ui.highLevelMeter.hidden = endless;
@@ -1670,8 +1750,11 @@ function updateUI() {
     button.setAttribute("aria-pressed", String(isActive));
   });
 
-  ui.difficultySelect.value = state.difficulty;
-  ui.difficultySelect.disabled = endless || timed;
+  ui.difficultyChoices.forEach((button) => {
+    const isSelected = button.dataset.difficulty === state.difficulty;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-selected", String(isSelected));
+  });
 
   ui.pauseButton.disabled = !(state.mode === "playing" || state.mode === "paused");
   updateSegmentStrip();
@@ -2202,8 +2285,23 @@ ui.resetDialog.addEventListener("click", (event) => {
     closeResetWindow();
   }
 });
-ui.difficultySelect.addEventListener("change", () => {
-  setDifficulty(ui.difficultySelect.value);
+ui.difficultyButton.addEventListener("click", toggleDifficultyMenu);
+ui.difficultyButton.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "Enter" || event.code === "Space") {
+    event.preventDefault();
+    openDifficultyMenu();
+  }
+});
+ui.difficultyChoices.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectDifficulty(button.dataset.difficulty);
+  });
+  button.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeDifficultyMenu();
+      ui.difficultyButton.focus();
+    }
+  });
 });
 ui.runModeOptions.forEach((button) => {
   button.addEventListener("click", () => {
@@ -2216,12 +2314,25 @@ ui.resetButtons.forEach((button) => {
   });
 });
 
+document.addEventListener("click", (event) => {
+  if (!ui.difficultyPanel.contains(event.target)) {
+    closeDifficultyMenu();
+  }
+});
+
 window.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
+    if (event.target?.closest?.("button, [role='listbox']")) {
+      return;
+    }
     event.preventDefault();
     if (!event.repeat) {
       handleHit();
     }
+  }
+
+  if (event.key === "Escape") {
+    closeDifficultyMenu();
   }
 
   if (event.key.toLowerCase() === "p" && !event.repeat) {
